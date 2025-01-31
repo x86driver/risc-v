@@ -49,14 +49,17 @@ module instruction_memory(
     output logic [31:0] inst
 );
 
-    logic [31:0] mem [0:1] = '{
+    localparam INST_COUNT = 4;
+    logic [31:0] mem [0:INST_COUNT-1] = '{
         32'h00900093,
-        32'hfff00113
+        32'h00102023,
+        32'h00002103,
+        32'h00510193
     };
 
     always_comb begin
-        if (pc <= 4) begin
-            inst = mem[pc >> 2];
+        if (pc < 4*INST_COUNT) begin
+            inst = mem[pc[31:2]];
         end else begin
             inst = 32'h0;
         end
@@ -65,6 +68,33 @@ module instruction_memory(
     //assign inst = (pc == 0) ? 32'h000000b3 : 32'h00000000; // add     ra,zero,zero
     //assign inst = (pc == 0) ? 32'h00900093 : 32'h0; // li      ra,9
     //assign inst = mem[pc >> 2];
+
+endmodule
+
+module data_memory(
+    input clk,
+    input logic [31:0] address,
+    input logic [31:0] write_data,
+    input logic MemRead,
+    input logic MemWrite,
+    output logic [31:0] read_data
+);
+
+    logic [31:0] mem [0:63];
+
+    always_comb begin
+        if (MemRead) begin
+            read_data = mem[address[31:2]];
+        end else begin
+            read_data = 32'h0;
+        end
+    end
+
+    always_ff @(posedge clk) begin
+        if (MemWrite) begin
+            mem[address[31:2]] <= write_data;
+        end
+    end
 
 endmodule
 
@@ -100,7 +130,8 @@ module control_unit(
     output logic MemWrite,
     output logic Branch,
     output logic [1:0] ALUOp,
-    output logic isSub
+    output logic isSub,
+    output logic isValid
 );
 
     always_comb begin
@@ -114,6 +145,7 @@ module control_unit(
                 Branch = 0;
                 ALUOp = 2'b10;
                 isSub = ((inst[14:12] == 3'b000) && (inst[30] == 1'b1)) ? 1 : 0; // 避免誤判 sra
+                isValid = 1;
             end
             7'b0010011: begin // I-format
                 ALUSrc = 1;
@@ -124,6 +156,7 @@ module control_unit(
                 Branch = 0;
                 ALUOp = 2'b10;
                 isSub = 0;
+                isValid = 1;
             end
             7'b0000011: begin // lw
                 ALUSrc = 1;
@@ -134,6 +167,7 @@ module control_unit(
                 Branch = 0;
                 ALUOp = 2'b00;
                 isSub = 0;
+                isValid = 1;
             end
             7'b0100011: begin // sw
                 ALUSrc = 1;
@@ -144,6 +178,7 @@ module control_unit(
                 Branch = 0;
                 ALUOp = 2'b00;
                 isSub = 0;
+                isValid = 1;
             end
             7'b1100011: begin // beq
                 ALUSrc = 0;
@@ -154,6 +189,7 @@ module control_unit(
                 Branch = 1;
                 ALUOp = 2'b01;
                 isSub = 1;
+                isValid = 1;
             end
             default: begin
                 ALUSrc = 0;
@@ -164,6 +200,7 @@ module control_unit(
                 Branch = 0;
                 ALUOp = 2'b00;
                 isSub = 0;
+                isValid = 0;
             end
         endcase
     end
@@ -180,6 +217,8 @@ module imm32_gen(
             7'b0000011, // Load
             7'b0010011: // ALU immediate
                 imm32 = {{20{inst[31]}}, inst[31:20]};
+            7'b0100011: // Store
+                imm32 = {{20{inst[31]}}, inst[31:25], inst[11:7]};
             default:
                 imm32 = 32'h0;
         endcase
@@ -247,6 +286,7 @@ module riscv_cpu(
     logic Branch;
     logic [1:0] ALUOp;
     logic isSub;
+    logic isValid;
 
     logic [31:0] mux_alu_out;
 
@@ -257,6 +297,10 @@ module riscv_cpu(
 
     logic [31:0] read_data1;
     logic [31:0] read_data2;
+
+    logic [31:0] memory_read_data;
+
+    logic [31:0] reg_write_data;
 
     program_counter pc_module(
         .clk(clk),
@@ -285,7 +329,8 @@ module riscv_cpu(
         .MemWrite(MemWrite),
         .Branch(Branch),
         .ALUOp(ALUOp),
-        .isSub(isSub)
+        .isSub(isSub),
+        .isValid(isValid)
     );
 
     alu_control alu_control_0(
@@ -316,9 +361,25 @@ module riscv_cpu(
         .read_reg2(inst[24:20]),
         .write_reg(inst[11:7]),
         .RegWrite(RegWrite),
-        .write_data(alu_out), // 應該要有 mux
+        .write_data(reg_write_data),
         .read_data1(read_data1),
         .read_data2(read_data2)
+    );
+
+    mux2to1 mux2to1_memory(
+        .sel(MemtoReg),
+        .A(alu_out),
+        .B(memory_read_data),
+        .mux_out(reg_write_data)
+    );
+
+    data_memory data_memory_0(
+        .clk(clk),
+        .address(alu_out),
+        .write_data(read_data2),
+        .MemRead(MemRead),
+        .MemWrite(MemWrite),
+        .read_data(memory_read_data)
     );
 
 endmodule

@@ -49,13 +49,14 @@ module instruction_memory(
     output logic [31:0] inst
 );
 
-    localparam INST_COUNT = 5;
+    localparam INST_COUNT = 6;
     logic [31:0] mem [0:INST_COUNT-1] = '{
-        32'h00900093,
-        32'h00102023,
-        32'h00002103,
-        32'h00510193,
-        32'hfe0008e3
+        32'h00000133,
+        32'h00a00093,
+        32'h00110133,
+        32'hfff08093,
+        32'hfe009ce3,
+        32'h00202023
     };
 
     always_comb begin
@@ -208,6 +209,30 @@ module control_unit(
 
 endmodule
 
+module branch_unit(
+    input logic [31:0] inst,
+    input logic Branch,
+    input logic zero,
+    output logic branch_taken
+);
+
+    always_comb begin
+        if (Branch) begin
+            unique case(inst[14:12])
+                3'b000: // beq
+                    branch_taken = zero;
+                3'b001: // bne
+                    branch_taken = !zero;
+                default:
+                    branch_taken = 0;
+            endcase
+        end else begin
+            branch_taken = 0;
+        end
+    end
+
+endmodule
+
 module imm32_gen(
     input logic [31:0] inst,
     output logic [31:0] imm32
@@ -275,6 +300,8 @@ module riscv_cpu(
     logic [31:0] pc_next;
     logic [31:0] inst;
 
+    logic branch_taken;
+
     logic [31:0] imm32;
 
     logic ALUSrc;
@@ -308,8 +335,15 @@ module riscv_cpu(
         .pc_current(pc_current)
     );
 
+    branch_unit branch_unit_0(
+        .inst(inst),
+        .Branch(Branch),
+        .zero(zero),
+        .branch_taken(branch_taken)
+    );
+
     mux2to1 mux2to1_pc(
-        .sel(Branch && zero),
+        .sel(branch_taken),
         .A(pc_current + 32'd4),
         .B(pc_current + imm32),
         .mux_out(pc_next)

@@ -2,19 +2,20 @@
 // Create Date: 01/20/2025 01:31:56 PM
 
 module alu_control(
-    input logic [3:0] opcode,
     input logic [1:0] aluop,
+    input logic isSub,
+    input logic [2:0] funct3,
     output logic [3:0] alu_ctrl
 );
 
     always_comb begin
-        casez ({aluop, opcode})
-            6'b00????: alu_ctrl = 4'b0010; // lw, sw
-            6'b?1????: alu_ctrl = 4'b0110; // beq
-            6'b1?0000: alu_ctrl = 4'b0010; // add
-            6'b1?1000: alu_ctrl = 4'b0110; // sub
-            6'b1?0111: alu_ctrl = 4'b0000; // and
-            6'b1?0110: alu_ctrl = 4'b0001; // or
+        casez ({aluop, isSub, funct3})
+            6'b00_?_???: alu_ctrl = 4'b0010; // lw, sw
+            6'b?1_?_???: alu_ctrl = 4'b0110; // beq
+            6'b1?_0_000: alu_ctrl = 4'b0010; // add
+            6'b1?_1_000: alu_ctrl = 4'b0110; // sub
+            6'b1?_0_111: alu_ctrl = 4'b0000; // and
+            6'b1?_0_110: alu_ctrl = 4'b0001; // or
             default:   alu_ctrl = 4'b0000;
         endcase
     end
@@ -48,9 +49,21 @@ module instruction_memory(
     output logic [31:0] inst
 );
 
-    logic [31:0] mem [0:16];
+    logic [31:0] mem [0:1] = '{
+        32'h00900093,
+        32'hfff00113
+    };
+
+    always_comb begin
+        if (pc <= 4) begin
+            inst = mem[pc >> 2];
+        end else begin
+            inst = 32'h0;
+        end
+    end
     //assign inst = 32'h00402303; // lw t1,4(zero) # 4
-    assign inst = (pc == 0) ? 32'h000000b3 : 32'h00000000;
+    //assign inst = (pc == 0) ? 32'h000000b3 : 32'h00000000; // add     ra,zero,zero
+    //assign inst = (pc == 0) ? 32'h00900093 : 32'h0; // li      ra,9
     //assign inst = mem[pc >> 2];
 
 endmodule
@@ -79,18 +92,19 @@ module register_file(
 endmodule
 
 module control_unit(
-    input logic [6:0] opcode,
+    input logic [31:0] inst,
     output logic ALUSrc,
     output logic MemtoReg,
     output logic RegWrite,
     output logic MemRead,
     output logic MemWrite,
     output logic Branch,
-    output logic [1:0] ALUOp
+    output logic [1:0] ALUOp,
+    output logic isSub
 );
 
     always_comb begin
-        casez (opcode)
+        casez (inst[6:0])
             7'b0110011: begin // R-format
                 ALUSrc = 0;
                 MemtoReg = 0;
@@ -99,6 +113,17 @@ module control_unit(
                 MemWrite = 0;
                 Branch = 0;
                 ALUOp = 2'b10;
+                isSub = ((inst[14:12] == 3'b000) && (inst[30] == 1'b1)) ? 1 : 0; // 避免誤判 sra
+            end
+            7'b0010011: begin // I-format
+                ALUSrc = 1;
+                MemtoReg = 0;
+                RegWrite = 1;
+                MemRead = 0;
+                MemWrite = 0;
+                Branch = 0;
+                ALUOp = 2'b10;
+                isSub = 0;
             end
             7'b0000011: begin // lw
                 ALUSrc = 1;
@@ -108,6 +133,7 @@ module control_unit(
                 MemWrite = 0;
                 Branch = 0;
                 ALUOp = 2'b00;
+                isSub = 0;
             end
             7'b0100011: begin // sw
                 ALUSrc = 1;
@@ -117,6 +143,7 @@ module control_unit(
                 MemWrite = 1;
                 Branch = 0;
                 ALUOp = 2'b00;
+                isSub = 0;
             end
             7'b1100011: begin // beq
                 ALUSrc = 0;
@@ -126,6 +153,7 @@ module control_unit(
                 MemWrite = 0;
                 Branch = 1;
                 ALUOp = 2'b01;
+                isSub = 1;
             end
             default: begin
                 ALUSrc = 0;
@@ -135,7 +163,25 @@ module control_unit(
                 MemWrite = 0;
                 Branch = 0;
                 ALUOp = 2'b00;
+                isSub = 0;
             end
+        endcase
+    end
+
+endmodule
+
+module imm32_gen(
+    input logic [31:0] inst,
+    output logic [31:0] imm32
+);
+
+    always_comb begin
+        unique case (inst[6:0])
+            7'b0000011, // Load
+            7'b0010011: // ALU immediate
+                imm32 = {{20{inst[31]}}, inst[31:20]};
+            default:
+                imm32 = 32'h0;
         endcase
     end
 
@@ -170,6 +216,19 @@ module program_counter(
 
 endmodule
 
+module mux2to1(
+    input logic sel,
+    input logic [31:0] A,
+    input logic [31:0] B,
+    output logic [31:0] mux_out
+);
+
+    always_comb begin
+        mux_out = sel ? B : A;
+    end
+
+endmodule
+
 module riscv_cpu(
     input logic clk,
     input logic rst_n
@@ -178,6 +237,8 @@ module riscv_cpu(
     logic [31:0] pc_current;
     logic [31:0] inst;
 
+    logic [31:0] imm32;
+
     logic ALUSrc;
     logic MemtoReg;
     logic RegWrite;
@@ -185,6 +246,9 @@ module riscv_cpu(
     logic MemWrite;
     logic Branch;
     logic [1:0] ALUOp;
+    logic isSub;
+
+    logic [31:0] mux_alu_out;
 
     logic [3:0] alu_ctrl;
 
@@ -207,27 +271,41 @@ module riscv_cpu(
         .inst(inst)
     );
 
+    imm32_gen imm32_gen_0(
+        .inst(inst),
+        .imm32(imm32)
+    );
+
     control_unit controL_unit_0(
-        .opcode(inst[6:0]),
+        .inst(inst),
         .ALUSrc(ALUSrc),
         .MemtoReg(MemtoReg),
         .RegWrite(RegWrite),
         .MemRead(MemRead),
         .MemWrite(MemWrite),
         .Branch(Branch),
-        .ALUOp(ALUOp)
+        .ALUOp(ALUOp),
+        .isSub(isSub)
     );
 
     alu_control alu_control_0(
-        .opcode({inst[30], inst[14:12]}),
         .aluop(ALUOp),
+        .isSub(isSub),
+        .funct3(inst[14:12]),
         .alu_ctrl(alu_ctrl)
+    );
+
+    mux2to1 mux2to1_alu(
+        .sel(ALUSrc),
+        .A(read_data2),
+        .B(imm32),
+        .mux_out(mux_alu_out)
     );
 
     alu alu_0(
         .alu_ctrl(alu_ctrl),
         .A(read_data1),
-        .B(read_data2), // 應該要有 mux
+        .B(mux_alu_out),
         .alu_out(alu_out),
         .zero(zero)
     );

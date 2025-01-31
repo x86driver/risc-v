@@ -49,12 +49,13 @@ module instruction_memory(
     output logic [31:0] inst
 );
 
-    localparam INST_COUNT = 4;
+    localparam INST_COUNT = 5;
     logic [31:0] mem [0:INST_COUNT-1] = '{
         32'h00900093,
         32'h00102023,
         32'h00002103,
-        32'h00510193
+        32'h00510193,
+        32'hfe0008e3
     };
 
     always_comb begin
@@ -219,6 +220,8 @@ module imm32_gen(
                 imm32 = {{20{inst[31]}}, inst[31:20]};
             7'b0100011: // Store
                 imm32 = {{20{inst[31]}}, inst[31:25], inst[11:7]};
+            7'b1100011: // Branch
+                imm32 = {{19{inst[31]}}, inst[31], inst[7], inst[30:25], inst[11:8], 1'b0};
             default:
                 imm32 = 32'h0;
         endcase
@@ -229,7 +232,6 @@ endmodule
 module program_counter(
     input logic clk,
     input logic rst_n,
-    input logic pc_sel,
     input logic [31:0] pc_next,
     output logic [31:0] pc_current
 );
@@ -240,15 +242,11 @@ module program_counter(
         if (!rst_n) begin
             pc_current <= 0;
         end else begin
-            if (pc_sel) begin
-                pc_current <= pc_next;
+            if (!power_on_reset) begin
+                pc_current <= 0;
+                power_on_reset <= 1'b1;
             end else begin
-                if (!power_on_reset) begin
-                    pc_current <= 0;
-                    power_on_reset <= 1'b1;
-                end else begin
-                    pc_current <= pc_current + 32'd4;
-                end
+                pc_current <= pc_next;
             end
         end
     end
@@ -274,6 +272,7 @@ module riscv_cpu(
 );
 
     logic [31:0] pc_current;
+    logic [31:0] pc_next;
     logic [31:0] inst;
 
     logic [31:0] imm32;
@@ -305,9 +304,15 @@ module riscv_cpu(
     program_counter pc_module(
         .clk(clk),
         .rst_n(rst_n),
-        .pc_sel(1'b0),
-        .pc_next(32'd0),
+        .pc_next(pc_next),
         .pc_current(pc_current)
+    );
+
+    mux2to1 mux2to1_pc(
+        .sel(Branch && zero),
+        .A(pc_current + 32'd4),
+        .B(pc_current + imm32),
+        .mux_out(pc_next)
     );
 
     instruction_memory inst_mem(

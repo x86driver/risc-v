@@ -18,26 +18,34 @@ module uart_tx(
     reg [7:0] tx_send_buffer = data;
     reg [1:0] state = IDLE, nstate = IDLE;
     reg [3:0] counter = 0, ncounter = 0;
-    logic start_send = 0;
+    logic start_toggle = 0;
 
     always @(posedge clk) begin
         if (!rst_n) begin
-            start_send <= 0;
+            start_toggle <= 0;
         end else if (start) begin
-            start_send <= 1;
+            start_toggle = ~start_toggle;
             tx_send_buffer <= data;
         end
     end
 
+    logic sync_toggle_ff1 = 0;
+    logic sync_toggle_ff2 = 0;
     always @(posedge baud_clk) begin
         if (!rst_n) begin
             state <= IDLE;
             counter <= 0;
+            sync_toggle_ff1 <= 0;
+            sync_toggle_ff2 <= 0;
         end else begin
             state <= nstate;
             counter <= ncounter;
+            sync_toggle_ff1 <= start_toggle;
+            sync_toggle_ff2 = sync_toggle_ff1;
         end
     end
+
+    wire send_start = (sync_toggle_ff1 != sync_toggle_ff2);
 
     always @(*) begin
         nstate = state;
@@ -45,7 +53,7 @@ module uart_tx(
 
         case (state)
             IDLE: begin
-                if (start_send)
+                if (send_start)
                     nstate = START;
             end
             START: begin

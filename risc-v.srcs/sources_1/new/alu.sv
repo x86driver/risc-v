@@ -1,6 +1,10 @@
 `timescale 1ns / 1ps
 // Create Date: 01/20/2025 01:31:56 PM
 
+`include "uart.sv"
+
+parameter UART_ADDR_OFFSET = 32'h0000_0400;
+
 module alu_control(
     input logic [1:0] aluop,
     input logic isSub,
@@ -49,15 +53,24 @@ module instruction_memory(
     output logic [31:0] inst
 );
 
-    localparam INST_COUNT = 6;
+    localparam INST_COUNT = 3;
+
+    logic [31:0] mem [0:INST_COUNT-1] = '{
+        32'h40000293,
+        32'h04800313,
+        32'h0062a023
+    };
+
+    /*從1加到10
     logic [31:0] mem [0:INST_COUNT-1] = '{
         32'h00000133,
         32'h00a00093,
         32'h00110133,
         32'hfff08093,
         32'hfe009ce3,
-        32'h00202023
+        32'h00202223
     };
+*/
 
     always_comb begin
         if (pc < 4*INST_COUNT) begin
@@ -98,6 +111,30 @@ module data_memory(
         end
     end
 
+endmodule
+
+module address_decoder(
+    input logic [31:0] address,
+    input logic MemRead,
+    input logic MemWrite,
+    output logic ram_en,
+    output logic uart_en
+);
+
+    always_comb begin
+        if (MemRead || MemWrite) begin
+            if (address < UART_ADDR_OFFSET) begin : RAM
+                ram_en = 1;
+                uart_en = 0;
+            end else begin : UART
+                ram_en = 0;
+                uart_en = 1;
+            end
+        end else begin
+            ram_en = 0;
+            uart_en = 0;
+        end
+    end
 endmodule
 
 module register_file(
@@ -291,9 +328,23 @@ module mux2to1(
 
 endmodule
 
+module uart_addr_offset(
+    input logic [31:0] addr,
+    output logic [1:0] uart_addr
+);
+
+    logic [31:0] tmp;
+    always_comb begin
+        tmp = addr - UART_ADDR_OFFSET;
+        uart_addr = tmp[3:2];
+    end
+
+endmodule
+
 module riscv_cpu(
     input logic clk,
-    input logic rst_n
+    input logic rst_n,
+    output logic uart_tx_pin
 );
 
     logic [31:0] pc_current;
@@ -323,6 +374,9 @@ module riscv_cpu(
 
     logic [31:0] read_data1;
     logic [31:0] read_data2;
+
+    logic ram_en;
+    logic uart_en;
 
     logic [31:0] memory_read_data;
 
@@ -412,13 +466,37 @@ module riscv_cpu(
         .mux_out(reg_write_data)
     );
 
+    address_decoder address_decoder_0(
+        .address(alu_out),
+        .MemRead(MemRead),
+        .MemWrite(MemWrite),
+        .ram_en(ram_en),
+        .uart_en(uart_en)
+    );
+
     data_memory data_memory_0(
         .clk(clk),
         .address(alu_out),
         .write_data(read_data2),
-        .MemRead(MemRead),
-        .MemWrite(MemWrite),
+        .MemRead(MemRead && ram_en),
+        .MemWrite(MemWrite && ram_en),
         .read_data(memory_read_data)
+    );
+
+    logic [1:0] uart_addr;
+
+    uart_addr_offset uart_addr_offset_0(
+        .addr(alu_out),
+        .uart_addr(uart_addr)
+    );
+
+    uart uart_0(
+        .clk(clk),
+        .rst_n(rst_n),
+        .wen(uart_en),
+        .addr(uart_addr),
+        .wdata(read_data2),
+        .tx_pin(uart_tx_pin)
     );
 
 endmodule

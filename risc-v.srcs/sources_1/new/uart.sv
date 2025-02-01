@@ -23,7 +23,6 @@ module uart_tx(
     always @(posedge clk) begin
         if (!rst_n) begin
             start_send <= 0;
-            tx_send_buffer <= data;
         end else if (start) begin
             start_send <= 1;
             tx_send_buffer <= data;
@@ -34,7 +33,6 @@ module uart_tx(
         if (!rst_n) begin
             state <= IDLE;
             counter <= 0;
-            tx_send_buffer <= data;
         end else begin
             state <= nstate;
             counter <= ncounter;

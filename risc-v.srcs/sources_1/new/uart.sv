@@ -18,67 +18,60 @@ module uart_tx(
 
     reg [7:0] tx_send_buffer = data;
     reg [1:0] state = IDLE, nstate = IDLE;
-    reg [3:0] counter = 0, ncounter = 0;
-    logic start_toggle = 0;
-    logic tx_busy_reg = 0;
-    assign tx_busy = tx_busy_reg;
+    reg [3:0] counter = 0;
+    logic start_send = 0;
+
+    assign tx_busy = (state != IDLE);
 
     always @(posedge clk) begin
         if (!rst_n) begin
-            start_toggle <= 0;
-        end else if (start) begin
-            start_toggle <= ~start_toggle;
-            tx_send_buffer <= data;
-        end
-    end
-
-    logic sync_toggle_ff1 = 0;
-    logic sync_toggle_ff2 = 0;
-    always @(posedge baud_clk) begin
-        if (!rst_n) begin
             state <= IDLE;
             counter <= 0;
-            sync_toggle_ff1 <= 0;
-            sync_toggle_ff2 <= 0;
-            tx_busy_reg <= 0;
+            start_send <= 0;
+            tx_send_buffer <= 8'h00;
         end else begin
             state <= nstate;
-            counter <= ncounter;
-            sync_toggle_ff1 <= start_toggle;
-            sync_toggle_ff2 <= sync_toggle_ff1;
 
-            if (nstate == IDLE)
-                tx_busy_reg <= 1'b0;
-            else
-                tx_busy_reg <= 1'b1;
+            if (start) begin
+                start_send <= 1;
+                tx_send_buffer <= data;
+            end
+
+            if (nstate == START) begin
+                if (state == IDLE) begin
+                    tx_send_buffer <= data;
+                end
+            end
+
+            if (state == SEND && baud_clk) begin
+                counter <= counter + 1;
+            end else if (state == IDLE) begin
+                counter <= 0;
+            end else if (state == STOP) begin
+                start_send <= 0;
+            end
         end
     end
-
-    wire send_start = (sync_toggle_ff1 != sync_toggle_ff2);
 
     always @(*) begin
         nstate = state;
-        ncounter = counter;
 
         case (state)
             IDLE: begin
-                if (send_start)
+                if (baud_clk && start_send)
                     nstate = START;
             end
             START: begin
-                nstate = SEND;
+                if (baud_clk)
+                    nstate = SEND;
             end
             SEND: begin
-                if (counter < 7) begin
-                    ncounter = counter + 1;
-                    nstate = SEND;
-                end else begin
-                    ncounter = 0;
+                if (baud_clk && counter == 7)
                     nstate = STOP;
-                end
             end
             STOP: begin
-                nstate = IDLE;
+                if (baud_clk)
+                    nstate = IDLE;
             end
             default: begin
                 nstate = IDLE;
@@ -162,22 +155,16 @@ module uart(
     logic [7:0] tx_data = 8'h00;
     logic tx_start = 0;
     wire tx_busy;
-    logic tx_busy_sync1;
-    logic tx_busy_sync2;
 
     always_ff @(posedge clk) begin
         if (!rst_n) begin
             tx_data  <= 8'h00;
             tx_start <= 1'b0;
-            tx_busy_sync1 <= 1'b0;
-            tx_busy_sync2 <= 1'b0;
         end else begin
             tx_data  <= tx_data;
             tx_start <= 1'b0; // 預設每個 cycle 關閉
-            tx_busy_sync1 <= tx_busy;
-            tx_busy_sync2 <= tx_busy_sync1;
             // 如果地址是 0，且有 write enable，就把 wdata[7:0] 寫進去
-            if (wen && addr == 2'd0 && !tx_busy_sync2) begin
+            if (wen && addr == 2'd0 && !tx_busy) begin
                 tx_data  <= wdata[7:0];
                 tx_start <= 1'b1; // 觸發一次傳送
             end

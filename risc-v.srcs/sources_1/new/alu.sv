@@ -53,15 +53,13 @@ module instruction_memory(
     output logic [31:0] inst
 );
 
-    localparam INST_COUNT = 5;
+    localparam INST_COUNT = 4;
 
-    /* addi t0, x0, 10 ~ 14*/
     logic [31:0] mem [0:INST_COUNT-1] = '{
         32'h00a00293,
-        32'h00b00313,
-        32'h00c00393,
-        32'h00d00413,
-        32'h00e00493
+        32'h00000033,
+        32'h00000033,
+        32'h000283b3
     };
 
     /*從1加到10
@@ -152,8 +150,18 @@ module register_file(
 );
 
     logic [31:0] registers [0:31];
-    assign read_data1 = (read_reg1 == 5'b0) ? 32'h0 : registers[read_reg1];
-    assign read_data2 = (read_reg2 == 5'b0) ? 32'h0 : registers[read_reg2];
+    always_comb begin
+        if ((read_reg1 == write_reg) && RegWrite && (write_reg != 5'b0)) begin
+            read_data1 = write_data;
+        end else begin
+            read_data1 = (read_reg1 == 5'b0) ? 32'h0 : registers[read_reg1];
+        end
+        if ((read_reg2 == write_reg) && RegWrite && (write_reg != 5'b0)) begin
+            read_data2 = write_data;
+        end else begin
+            read_data2 = (read_reg2 == 5'b0) ? 32'h0 : registers[read_reg2];
+        end
+    end
 
     always_ff @(posedge clk) begin
         if (RegWrite && (write_reg != 5'b0)) begin

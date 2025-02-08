@@ -15,7 +15,7 @@ module alu_control(
     always_comb begin
         casez ({aluop, isSub, funct3})
             6'b00_?_???: alu_ctrl = 4'b0010; // lw, sw
-            6'b?1_?_???: alu_ctrl = 4'b0110; // beq
+            6'b01_?_???: alu_ctrl = 4'b0110; // beq
             6'b1?_0_000: alu_ctrl = 4'b0010; // add
             6'b1?_1_000: alu_ctrl = 4'b0110; // sub
             6'b1?_0_111: alu_ctrl = 4'b0000; // and

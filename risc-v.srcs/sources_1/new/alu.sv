@@ -53,12 +53,15 @@ module instruction_memory(
     output logic [31:0] inst
 );
 
-    localparam INST_COUNT = 3;
+    localparam INST_COUNT = 5;
 
+    /* addi t0, x0, 10 ~ 14*/
     logic [31:0] mem [0:INST_COUNT-1] = '{
-        32'h40000293,
-        32'h04800313,
-        32'h0062a023
+        32'h00a00293,
+        32'h00b00313,
+        32'h00c00393,
+        32'h00d00413,
+        32'h00e00493
     };
 
     /*從1加到10
@@ -341,46 +344,282 @@ module uart_addr_offset(
 
 endmodule
 
-module riscv_cpu(
+module if_id_pipeline(
     input logic clk,
     input logic rst_n,
-    output logic uart_tx_pin
+    input logic [31:0] if_pc,
+    input logic [31:0] if_inst,
+    output logic [31:0] id_pc,
+    output logic [31:0] id_inst
 );
 
-    logic [31:0] pc_current;
-    logic [31:0] pc_next;
-    logic [31:0] inst;
+    always_ff @(posedge clk) begin
+        if (!rst_n) begin
+            id_pc <= 32'h0;
+            id_inst <= 32'h0;
+        end else begin
+            id_pc <= if_pc;
+            id_inst <= if_inst;
+        end
+    end
 
-    logic branch_taken;
+endmodule
 
-    logic [31:0] imm32;
+module id_ex_pipeline(
+    input logic clk,
+    input logic rst_n,
 
-    logic ALUSrc;
-    logic MemtoReg;
-    logic RegWrite;
-    logic MemRead;
-    logic MemWrite;
-    logic Branch;
-    logic [1:0] ALUOp;
-    logic isSub;
-    logic isValid;
+    input logic id_ALUSrc,
+    input logic id_MemtoReg,
+    input logic id_RegWrite,
+    input logic id_MemRead,
+    input logic id_MemWrite,
+    input logic id_Branch,
+    input logic [1:0] id_ALUOp,
+    input logic id_isSub,
+    input logic id_isValid,
 
-    logic [31:0] mux_alu_out;
+    input logic [31:0] id_pc,
+    input logic [31:0] id_inst,
+    input logic [31:0] id_read_data1,
+    input logic [31:0] id_read_data2,
+    input logic [31:0] id_imm32,
+    input logic [2:0] id_funct3,
+    input logic [4:0] id_rd,
 
-    logic [3:0] alu_ctrl;
+    output logic ex_ALUSrc,
+    output logic ex_MemtoReg,
+    output logic ex_RegWrite,
+    output logic ex_MemRead,
+    output logic ex_MemWrite,
+    output logic ex_Branch,
+    output logic [1:0] ex_ALUOp,
+    output logic ex_isSub,
+    output logic ex_isValid,
 
-    logic [31:0] alu_out;
-    logic zero;
+    output logic [31:0] ex_pc,
+    output logic [31:0] ex_inst,
+    output logic [31:0] ex_read_data1,
+    output logic [31:0] ex_read_data2,
+    output logic [31:0] ex_imm32,
+    output logic [2:0] ex_funct3,
+    output logic [4:0] ex_rd
+);
 
-    logic [31:0] read_data1;
-    logic [31:0] read_data2;
+    always_ff @(posedge clk) begin
+        if (!rst_n) begin
+            ex_ALUSrc <= 0;
+            ex_MemtoReg <= 0;
+            ex_RegWrite <= 0;
+            ex_MemRead <= 0;
+            ex_MemWrite <= 0;
+            ex_Branch <= 0;
+            ex_ALUOp <= 0;
+            ex_isSub <= 0;
+            ex_isValid <= 0;
 
-    logic ram_en;
-    logic uart_en;
+            ex_pc <= 0;
+            ex_inst <= 0;
+            ex_read_data1 <= 0;
+            ex_read_data2 <= 0;
+            ex_imm32 <= 0;
+            ex_funct3 <= 0;
+            ex_rd <= 0;
+        end else begin
+            ex_ALUSrc <= id_ALUSrc;
+            ex_MemtoReg <= id_MemtoReg;
+            ex_RegWrite <= id_RegWrite;
+            ex_MemRead <= id_MemRead;
+            ex_MemWrite <= id_MemWrite;
+            ex_Branch <= id_Branch;
+            ex_ALUOp <= id_ALUOp;
+            ex_isSub <= id_isSub;
+            ex_isValid <= id_isValid;
 
-    logic [31:0] memory_read_data;
+            ex_pc <= id_pc;
+            ex_inst <= id_inst;
+            ex_read_data1 <= id_read_data1;
+            ex_read_data2 <= id_read_data2;
+            ex_imm32 <= id_imm32;
+            ex_funct3 <= id_funct3;
+            ex_rd <= id_rd;
+        end
+    end
 
-    logic [31:0] reg_write_data;
+endmodule
+
+module ex_mem_pipeline(
+    input logic clk,
+    input logic rst_n,
+    input logic ex_MemtoReg,
+    input logic ex_RegWrite,
+    input logic ex_Branch,
+    input logic ex_MemRead,
+    input logic ex_MemWrite,
+    input logic [31:0] ex_pc,
+    input logic [31:0] ex_inst,
+    input logic ex_Zero,
+    input logic [31:0] ex_alu_out,
+    input logic [31:0] ex_read_data2,
+    input logic [4:0] ex_rd,
+    output logic mem_MemtoReg,
+    output logic mem_RegWrite,
+    output logic mem_Branch,
+    output logic mem_MemRead,
+    output logic mem_MemWrite,
+    output logic [31:0] mem_pc,
+    output logic [31:0] mem_inst,
+    output logic mem_Zero,
+    output logic [31:0] mem_alu_out,
+    output logic [31:0] mem_read_data2,
+    output logic [4:0] mem_rd
+);
+
+    always_ff @(posedge clk) begin
+        if (!rst_n) begin
+            mem_MemtoReg <= 0;
+            mem_RegWrite <= 0;
+            mem_Branch <= 0;
+            mem_MemRead <= 0;
+            mem_MemWrite <= 0;
+            mem_pc <= 0;
+            mem_inst <= 0;
+            mem_Zero <= 0;
+            mem_alu_out <= 0;
+            mem_read_data2 <= 0;
+            mem_rd <= 0;
+        end else begin
+            mem_MemtoReg <= ex_MemtoReg;
+            mem_RegWrite <= ex_RegWrite;
+            mem_Branch <= ex_Branch;
+            mem_MemRead <= ex_MemRead;
+            mem_MemWrite <= ex_MemWrite;
+            mem_pc <= ex_pc;
+            mem_inst <= ex_inst;
+            mem_Zero <= ex_Zero;
+            mem_alu_out <= ex_alu_out;
+            mem_read_data2 <= ex_read_data2;
+            mem_rd <= ex_rd;
+        end
+    end
+
+endmodule
+
+module mem_wb_pipeline(
+    input logic clk,
+    input logic rst_n,
+    input logic mem_RegWrite,
+    input logic mem_MemtoReg,
+    input logic [31:0] mem_memory_read_data,
+    input logic [31:0] mem_alu_out,
+    input logic [4:0] mem_rd,
+    output logic wb_RegWrite,
+    output logic wb_MemtoReg,
+    output logic [31:0] wb_memory_read_data,
+    output logic [31:0] wb_alu_out,
+    output logic [4:0] wb_rd
+);
+
+    always_ff @(posedge clk) begin
+        if (!rst_n) begin
+            wb_RegWrite <= 0;
+            wb_MemtoReg <= 0;
+            wb_memory_read_data <= 0;
+            wb_alu_out <= 0;
+            wb_rd <= 0;
+        end else begin
+            wb_RegWrite <= mem_RegWrite;
+            wb_MemtoReg <= mem_MemtoReg;
+            wb_memory_read_data <= mem_memory_read_data;
+            wb_alu_out <= mem_alu_out;
+            wb_rd <= mem_rd;
+        end
+    end
+
+endmodule
+
+module riscv_cpu(
+//    input logic clk,
+//    input logic rst_n,
+);
+
+    logic clk = 0;
+    logic rst_n = 1;
+    initial begin
+        clk = 0;
+    end
+    always #10 clk = ~clk;
+
+    wire [31:0] pc_current;
+    wire [31:0] pc_next;
+    wire [31:0] if_inst;
+
+    wire [31:0] id_pc;
+    wire [31:0] id_inst;
+
+    wire mem_PCSrc;
+
+    wire [31:0] id_imm32;
+    wire [31:0] ex_imm32;
+
+    wire id_ALUSrc;
+    wire id_MemtoReg;
+    wire id_RegWrite;
+    wire id_MemRead;
+    wire id_MemWrite;
+    wire id_Branch;
+    wire [1:0] id_ALUOp;
+    wire id_isSub;
+    wire id_isValid;
+
+    wire ex_ALUSrc;
+    wire ex_MemtoReg;
+    wire ex_RegWrite;
+    wire ex_MemRead;
+    wire ex_MemWrite;
+    wire ex_Branch;
+    wire [1:0] ex_ALUOp;
+    wire ex_isSub;
+    wire ex_isValid;
+
+    wire [2:0] ex_funct3;
+    wire [4:0] ex_rd;
+    wire [31:0] ex_pc;
+    wire [31:0] ex_inst;
+
+    wire mem_MemtoReg;
+    wire mem_RegWrite;
+    wire mem_Branch;
+    wire mem_MemRead;
+    wire mem_MemWrite;
+    wire [31:0] mem_pc;
+    wire [31:0] mem_inst;
+    wire mem_Zero;
+    wire [31:0] mem_alu_out;
+    wire [31:0] mem_read_data2;
+    wire [4:0] mem_rd;
+
+    wire [31:0] mux_alu_out;
+
+    wire [3:0] alu_ctrl;
+
+    wire ex_Zero;
+    wire [31:0] ex_alu_out;
+
+    wire [31:0] id_read_data1;
+    wire [31:0] id_read_data2;
+    wire [31:0] ex_read_data1;
+    wire [31:0] ex_read_data2;
+
+    wire wb_RegWrite;
+    wire wb_MemtoReg;
+    wire [31:0] wb_memory_read_data;
+    wire [31:0] wb_alu_out;
+    wire [4:0] wb_rd;
+
+    wire [31:0] mem_memory_read_data;
+
+    wire [31:0] wb_reg_write_data;
 
     program_counter pc_module(
         .clk(clk),
@@ -390,113 +629,181 @@ module riscv_cpu(
     );
 
     branch_unit branch_unit_0(
-        .inst(inst),
-        .Branch(Branch),
-        .zero(zero),
-        .branch_taken(branch_taken)
+        .inst(mem_inst),
+        .Branch(mem_Branch),
+        .zero(mem_Zero),
+        .branch_taken(mem_PCSrc)
     );
 
     mux2to1 mux2to1_pc(
-        .sel(branch_taken),
+        .sel(mem_PCSrc),
         .A(pc_current + 32'd4),
-        .B(pc_current + imm32),
+        .B(mem_pc),
         .mux_out(pc_next)
     );
 
     instruction_memory inst_mem(
         .pc(pc_current),
-        .inst(inst)
+        .inst(if_inst)
+    );
+
+    if_id_pipeline if_id_pipeline_0(
+        .clk(clk),
+        .rst_n(rst_n),
+        .if_pc(pc_current),
+        .if_inst(if_inst),
+        .id_pc(id_pc),
+        .id_inst(id_inst)
+    );
+
+    id_ex_pipeline id_ex_pipeline_0(
+        .clk(clk),
+        .rst_n(rst_n),
+
+        .id_ALUSrc(id_ALUSrc),
+        .id_MemtoReg(id_MemtoReg),
+        .id_RegWrite(id_RegWrite),
+        .id_MemRead(id_MemRead),
+        .id_MemWrite(id_MemWrite),
+        .id_Branch(id_Branch),
+        .id_ALUOp(id_ALUOp),
+        .id_isSub(id_isSub),
+        .id_isValid(id_isValid),
+
+        .id_pc(id_pc),
+        .id_inst(id_inst),
+        .id_read_data1(id_read_data1),
+        .id_read_data2(id_read_data2),
+        .id_imm32(id_imm32),
+        .id_funct3(id_inst[14:12]),
+        .id_rd(id_inst[11:7]),
+
+        .ex_ALUSrc(ex_ALUSrc),
+        .ex_MemtoReg(ex_MemtoReg),
+        .ex_RegWrite(ex_RegWrite),
+        .ex_MemRead(ex_MemRead),
+        .ex_MemWrite(ex_MemWrite),
+        .ex_Branch(ex_Branch),
+        .ex_ALUOp(ex_ALUOp),
+        .ex_isSub(ex_isSub),
+        .ex_isValid(ex_isValid),
+
+        .ex_pc(ex_pc),
+        .ex_inst(ex_inst),
+        .ex_read_data1(ex_read_data1),
+        .ex_read_data2(ex_read_data2),
+        .ex_imm32(ex_imm32),
+        .ex_funct3(ex_funct3),
+        .ex_rd(ex_rd)
+    );
+
+    ex_mem_pipeline ex_mem_pipeline0(
+        .clk(clk),
+        .rst_n(rst_n),
+        .ex_MemtoReg(ex_MemtoReg),
+        .ex_RegWrite(ex_RegWrite),
+        .ex_Branch(ex_Branch),
+        .ex_MemRead(ex_MemRead),
+        .ex_MemWrite(ex_MemWrite),
+        .ex_pc(ex_pc + ex_imm32),
+        .ex_inst(ex_inst),
+        .ex_Zero(ex_Zero),
+        .ex_alu_out(ex_alu_out),
+        .ex_read_data2(ex_read_data2),
+        .ex_rd(ex_rd),
+        .mem_MemtoReg(mem_MemtoReg),
+        .mem_RegWrite(mem_RegWrite),
+        .mem_Branch(mem_Branch),
+        .mem_MemRead(mem_MemRead),
+        .mem_MemWrite(mem_MemWrite),
+        .mem_pc(mem_pc),
+        .mem_inst(mem_inst),
+        .mem_Zero(mem_Zero),
+        .mem_alu_out(mem_alu_out),
+        .mem_read_data2(mem_read_data2),
+        .mem_rd(mem_rd)
+    );
+
+    mem_wb_pipeline mem_wb_pipeline_0(
+        .clk(clk),
+        .rst_n(rst_n),
+        .mem_RegWrite(mem_RegWrite),
+        .mem_MemtoReg(mem_MemtoReg),
+        .mem_memory_read_data(mem_memory_read_data),
+        .mem_alu_out(mem_alu_out),
+        .mem_rd(mem_rd),
+        .wb_RegWrite(wb_RegWrite),
+        .wb_MemtoReg(wb_MemtoReg),
+        .wb_memory_read_data(wb_memory_read_data),
+        .wb_alu_out(wb_alu_out),
+        .wb_rd(wb_rd)
     );
 
     imm32_gen imm32_gen_0(
-        .inst(inst),
-        .imm32(imm32)
+        .inst(id_inst),
+        .imm32(id_imm32)
     );
 
     control_unit controL_unit_0(
-        .inst(inst),
-        .ALUSrc(ALUSrc),
-        .MemtoReg(MemtoReg),
-        .RegWrite(RegWrite),
-        .MemRead(MemRead),
-        .MemWrite(MemWrite),
-        .Branch(Branch),
-        .ALUOp(ALUOp),
-        .isSub(isSub),
-        .isValid(isValid)
+        .inst(id_inst),
+        .ALUSrc(id_ALUSrc),
+        .MemtoReg(id_MemtoReg),
+        .RegWrite(id_RegWrite),
+        .MemRead(id_MemRead),
+        .MemWrite(id_MemWrite),
+        .Branch(id_Branch),
+        .ALUOp(id_ALUOp),
+        .isSub(id_isSub),
+        .isValid(id_isValid)
     );
 
     alu_control alu_control_0(
-        .aluop(ALUOp),
-        .isSub(isSub),
-        .funct3(inst[14:12]),
+        .aluop(ex_ALUOp),
+        .isSub(ex_isSub),
+        .funct3(ex_funct3),
         .alu_ctrl(alu_ctrl)
     );
 
     mux2to1 mux2to1_alu(
-        .sel(ALUSrc),
-        .A(read_data2),
-        .B(imm32),
+        .sel(ex_ALUSrc),
+        .A(ex_read_data2),
+        .B(ex_imm32),
         .mux_out(mux_alu_out)
     );
 
     alu alu_0(
         .alu_ctrl(alu_ctrl),
-        .A(read_data1),
+        .A(ex_read_data1),
         .B(mux_alu_out),
-        .alu_out(alu_out),
-        .zero(zero)
+        .alu_out(ex_alu_out),
+        .zero(ex_Zero)
     );
 
     register_file reg_file_0(
         .clk(clk),
-        .read_reg1(inst[19:15]),
-        .read_reg2(inst[24:20]),
-        .write_reg(inst[11:7]),
-        .RegWrite(RegWrite),
-        .write_data(reg_write_data),
-        .read_data1(read_data1),
-        .read_data2(read_data2)
+        .read_reg1(id_inst[19:15]),
+        .read_reg2(id_inst[24:20]),
+        .write_reg(wb_rd),
+        .RegWrite(wb_RegWrite),
+        .write_data(wb_reg_write_data),
+        .read_data1(id_read_data1),
+        .read_data2(id_read_data2)
     );
 
     mux2to1 mux2to1_memory(
-        .sel(MemtoReg),
-        .A(alu_out),
-        .B(memory_read_data),
-        .mux_out(reg_write_data)
-    );
-
-    address_decoder address_decoder_0(
-        .address(alu_out),
-        .MemRead(MemRead),
-        .MemWrite(MemWrite),
-        .ram_en(ram_en),
-        .uart_en(uart_en)
+        .sel(wb_MemtoReg),
+        .A(wb_alu_out),
+        .B(wb_memory_read_data),
+        .mux_out(wb_reg_write_data)
     );
 
     data_memory data_memory_0(
         .clk(clk),
-        .address(alu_out),
-        .write_data(read_data2),
-        .MemRead(MemRead && ram_en),
-        .MemWrite(MemWrite && ram_en),
-        .read_data(memory_read_data)
-    );
-
-    logic [1:0] uart_addr;
-
-    uart_addr_offset uart_addr_offset_0(
-        .addr(alu_out),
-        .uart_addr(uart_addr)
-    );
-
-    uart uart_0(
-        .clk(clk),
-        .rst_n(rst_n),
-        .wen(uart_en),
-        .addr(uart_addr),
-        .wdata(read_data2),
-        .tx_pin(uart_tx_pin)
+        .address(mem_alu_out),
+        .write_data(mem_read_data2),
+        .MemRead(mem_MemRead),
+        .MemWrite(mem_MemWrite),
+        .read_data(mem_memory_read_data)
     );
 
 endmodule

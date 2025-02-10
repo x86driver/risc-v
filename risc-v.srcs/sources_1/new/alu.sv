@@ -53,13 +53,14 @@ module instruction_memory(
     output logic [31:0] inst
 );
 
-    localparam INST_COUNT = 4;
+    localparam INST_COUNT = 5;
 
     logic [31:0] mem [0:INST_COUNT-1] = '{
-        32'h00a00293,
-        32'h00000033,
-        32'h00000033,
-        32'h000283b3
+        32'h00500113,
+        32'h00a00193,
+        32'h00310233,
+        32'h002202b3,
+        32'h40328333
     };
 
     /*從1加到10
@@ -339,6 +340,25 @@ module mux2to1(
 
 endmodule
 
+module mux3to1(
+    input logic [1:0] sel,
+    input logic [31:0] A,
+    input logic [31:0] B,
+    input logic [31:0] C,
+    output logic [31:0] mux_out
+);
+
+    always_comb begin
+        unique case (sel)
+            2'b00: mux_out = A;
+            2'b01: mux_out = B;
+            2'b10: mux_out = C;
+            default: mux_out = A;
+        endcase
+    end
+
+endmodule
+
 module uart_addr_offset(
     input logic [31:0] addr,
     output logic [1:0] uart_addr
@@ -546,6 +566,49 @@ module mem_wb_pipeline(
 
 endmodule
 
+module forwarding_unit(
+    input logic mem_RegWrite,
+    input logic wb_RegWrite,
+    input logic [4:0] mem_rd,
+    input logic [4:0] wb_rd,
+    input logic [4:0] ex_rs1,
+    input logic [4:0] ex_rs2,
+    output logic [1:0] ForwardA,
+    output logic [1:0] ForwardB
+);
+
+    always_comb begin
+        // ---------------------
+        // ForwardA (for ex_rs1)
+        // ---------------------
+        if (mem_RegWrite && (mem_rd != 0) && (mem_rd == ex_rs1)) begin
+            // MEM->EX
+            ForwardA = 2'b10;
+        end else if (wb_RegWrite && (wb_rd != 0) && (wb_rd == ex_rs1)) begin
+            // WB->EX
+            ForwardA = 2'b01;
+        end else begin
+            // No forward
+            ForwardA = 2'b00;
+        end
+
+        // ---------------------
+        // ForwardB (for ex_rs2)
+        // ---------------------
+        if (mem_RegWrite && (mem_rd != 0) && (mem_rd == ex_rs2)) begin
+            // MEM->EX
+            ForwardB = 2'b10;
+        end else if (wb_RegWrite && (wb_rd != 0) && (wb_rd == ex_rs2)) begin
+            // WB->EX
+            ForwardB = 2'b01;
+        end else begin
+            // No forward
+            ForwardB = 2'b00;
+        end
+    end
+
+endmodule
+
 module riscv_cpu(
 //    input logic clk,
 //    input logic rst_n,
@@ -594,6 +657,11 @@ module riscv_cpu(
     wire [4:0] ex_rd;
     wire [31:0] ex_pc;
     wire [31:0] ex_inst;
+
+    wire [1:0] ForwardA;
+    wire [1:0] ForwardB;
+    wire [31:0] mux3to1_alu_a_out;
+    wire [31:0] mux3to1_alu_b_out;
 
     wire mem_MemtoReg;
     wire mem_RegWrite;
@@ -765,6 +833,17 @@ module riscv_cpu(
         .isValid(id_isValid)
     );
 
+    forwarding_unit forwarding_unit_0(
+        .mem_RegWrite(mem_RegWrite),
+        .wb_RegWrite(wb_RegWrite),
+        .mem_rd(mem_rd),
+        .wb_rd(wb_rd),
+        .ex_rs1(ex_inst[19:15]),
+        .ex_rs2(ex_inst[24:20]),
+        .ForwardA(ForwardA),
+        .ForwardB(ForwardB)
+    );
+
     alu_control alu_control_0(
         .aluop(ex_ALUOp),
         .isSub(ex_isSub),
@@ -772,16 +851,32 @@ module riscv_cpu(
         .alu_ctrl(alu_ctrl)
     );
 
+    mux3to1 mux3to1_alu_a(
+        .sel(ForwardA),
+        .A(ex_read_data1),
+        .B(wb_reg_write_data),
+        .C(mem_alu_out),
+        .mux_out(mux3to1_alu_a_out)
+    );
+
+    mux3to1 mux3to1_alu_b(
+        .sel(ForwardB),
+        .A(ex_read_data2),
+        .B(wb_reg_write_data),
+        .C(mem_alu_out),
+        .mux_out(mux3to1_alu_b_out)
+    );
+
     mux2to1 mux2to1_alu(
         .sel(ex_ALUSrc),
-        .A(ex_read_data2),
+        .A(mux3to1_alu_b_out),
         .B(ex_imm32),
         .mux_out(mux_alu_out)
     );
 
     alu alu_0(
         .alu_ctrl(alu_ctrl),
-        .A(ex_read_data1),
+        .A(mux3to1_alu_a_out),
         .B(mux_alu_out),
         .alu_out(ex_alu_out),
         .zero(ex_Zero)

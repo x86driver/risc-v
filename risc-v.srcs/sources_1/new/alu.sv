@@ -53,14 +53,16 @@ module instruction_memory(
     output logic [31:0] inst
 );
 
-    localparam INST_COUNT = 5;
+    localparam INST_COUNT = 7;
 
     logic [31:0] mem [0:INST_COUNT-1] = '{
+        32'h00800093,
         32'h00500113,
-        32'h00a00193,
-        32'h00310233,
-        32'h002202b3,
-        32'h40328333
+        32'h002081b3,
+        32'h40218233,
+        32'h003202b3,
+        32'h0000a303,
+        32'h002303b3
     };
 
     /*從1加到10
@@ -98,6 +100,13 @@ module data_memory(
 );
 
     logic [31:0] mem [0:63];
+
+    initial begin
+        mem[0] = 32'h123;
+        mem[1] = 32'h456;
+        mem[2] = 32'h789;
+        mem[3] = 32'habc;
+    end
 
     always_comb begin
         if (MemRead) begin
@@ -306,6 +315,7 @@ endmodule
 module program_counter(
     input logic clk,
     input logic rst_n,
+    input logic PCWrite,
     input logic [31:0] pc_next,
     output logic [31:0] pc_current
 );
@@ -319,7 +329,7 @@ module program_counter(
             if (!power_on_reset) begin
                 pc_current <= 0;
                 power_on_reset <= 1'b1;
-            end else begin
+            end else if (PCWrite) begin
                 pc_current <= pc_next;
             end
         end
@@ -375,6 +385,7 @@ endmodule
 module if_id_pipeline(
     input logic clk,
     input logic rst_n,
+    input logic if_id_Write,
     input logic [31:0] if_pc,
     input logic [31:0] if_inst,
     output logic [31:0] id_pc,
@@ -385,7 +396,7 @@ module if_id_pipeline(
         if (!rst_n) begin
             id_pc <= 32'h0;
             id_inst <= 32'h0;
-        end else begin
+        end else if (if_id_Write) begin
             id_pc <= if_pc;
             id_inst <= if_inst;
         end
@@ -609,6 +620,50 @@ module forwarding_unit(
 
 endmodule
 
+module hazard_detection_unit(
+    input logic ex_MemRead,
+    input logic [4:0] ex_rd,
+    input logic [4:0] id_rs1,
+    input logic [4:0] id_rs2,
+    output logic if_id_Write,
+    output logic PCWrite,
+    output logic hazard_control_mux_sel
+);
+
+    always_comb begin
+        if (ex_MemRead && (ex_rd == id_rs1 || ex_rd == id_rs2)) begin
+            PCWrite = 0;
+            if_id_Write = 0;
+            hazard_control_mux_sel = 0;
+        end else begin
+            PCWrite = 1;
+            if_id_Write = 1;
+            hazard_control_mux_sel = 1;
+        end
+    end
+
+endmodule
+
+module hazard_mux_2to2(
+    input logic sel,
+    input logic MemWrite,
+    input logic RegWrite,
+    output logic mux_MemWrite,
+    output logic mux_RegWrite
+);
+
+    always_comb begin
+        if (sel) begin
+            mux_MemWrite = MemWrite;
+            mux_RegWrite = RegWrite;
+        end else begin
+            mux_MemWrite = 1'b0;
+            mux_RegWrite = 1'b0;
+        end
+    end
+
+endmodule
+
 module riscv_cpu(
 //    input logic clk,
 //    input logic rst_n,
@@ -628,6 +683,8 @@ module riscv_cpu(
     wire [31:0] id_pc;
     wire [31:0] id_inst;
 
+    wire if_id_Write;
+    wire PCWrite;
     wire mem_PCSrc;
 
     wire [31:0] id_imm32;
@@ -642,6 +699,9 @@ module riscv_cpu(
     wire [1:0] id_ALUOp;
     wire id_isSub;
     wire id_isValid;
+
+    wire mux_id_MemWrite;
+    wire mux_id_RegWrite;
 
     wire ex_ALUSrc;
     wire ex_MemtoReg;
@@ -700,6 +760,7 @@ module riscv_cpu(
     program_counter pc_module(
         .clk(clk),
         .rst_n(rst_n),
+        .PCWrite(PCWrite),
         .pc_next(pc_next),
         .pc_current(pc_current)
     );
@@ -723,9 +784,28 @@ module riscv_cpu(
         .inst(if_inst)
     );
 
+    hazard_detection_unit hazard_detection_unit_0(
+        .ex_MemRead(ex_MemRead),
+        .ex_rd(ex_rd),
+        .id_rs1(id_inst[19:15]),
+        .id_rs2(id_inst[24:20]),
+        .if_id_Write(if_id_Write),
+        .PCWrite(PCWrite),
+        .hazard_control_mux_sel(hazard_control_mux_sel)
+    );
+
+    hazard_mux_2to2 hazard_mux_2to2_0(
+        .sel(hazard_control_mux_sel),
+        .MemWrite(id_MemWrite),
+        .RegWrite(id_RegWrite),
+        .mux_MemWrite(mux_id_MemWrite),
+        .mux_RegWrite(mux_id_RegWrite)
+    );
+
     if_id_pipeline if_id_pipeline_0(
         .clk(clk),
         .rst_n(rst_n),
+        .if_id_Write(if_id_Write),
         .if_pc(pc_current),
         .if_inst(if_inst),
         .id_pc(id_pc),
@@ -738,9 +818,9 @@ module riscv_cpu(
 
         .id_ALUSrc(id_ALUSrc),
         .id_MemtoReg(id_MemtoReg),
-        .id_RegWrite(id_RegWrite),
+        .id_RegWrite(mux_id_RegWrite),
         .id_MemRead(id_MemRead),
-        .id_MemWrite(id_MemWrite),
+        .id_MemWrite(mux_id_MemWrite),
         .id_Branch(id_Branch),
         .id_ALUOp(id_ALUOp),
         .id_isSub(id_isSub),

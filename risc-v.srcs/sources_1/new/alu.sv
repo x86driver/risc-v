@@ -53,16 +53,15 @@ module instruction_memory(
     output logic [31:0] inst
 );
 
-    localparam INST_COUNT = 7;
+    localparam INST_COUNT = 6;
 
     logic [31:0] mem [0:INST_COUNT-1] = '{
-        32'h00800093,
-        32'h00500113,
-        32'h002081b3,
-        32'h40218233,
-        32'h003202b3,
-        32'h0000a303,
-        32'h002303b3
+        32'h00001a63,
+        32'h00100093,
+        32'h00200113,
+        32'h00300193,
+        32'h00400213,
+        32'h00500293
     };
 
     /*從1加到10
@@ -386,6 +385,7 @@ module if_id_pipeline(
     input logic clk,
     input logic rst_n,
     input logic if_id_Write,
+    input logic if_Flush,
     input logic [31:0] if_pc,
     input logic [31:0] if_inst,
     output logic [31:0] id_pc,
@@ -396,6 +396,9 @@ module if_id_pipeline(
         if (!rst_n) begin
             id_pc <= 32'h0;
             id_inst <= 32'h0;
+        end else if (if_Flush) begin
+            id_pc <= 32'h0;
+            id_inst <= 32'h00000013; // NOP
         end else if (if_id_Write) begin
             id_pc <= if_pc;
             id_inst <= if_inst;
@@ -664,6 +667,56 @@ module hazard_mux_2to2(
 
 endmodule
 
+module control_hazard_detection_unit(
+    input logic [31:0] id_inst,
+    input logic [31:0] id_pc,
+    input logic [31:0] id_imm32,
+    input logic [31:0] id_read_data1,
+    input logic [31:0] id_read_data2,
+    output logic if_Flush,
+    output logic pc_branch_sel,
+    output logic [31:0] pc_branch_target
+);
+
+    logic branch_taken = 0;
+
+    always_comb begin
+        branch_taken = 0;
+        pc_branch_target = id_pc + id_imm32;
+        case (id_inst[6:0])
+            7'b1100011: begin // branch
+                unique case(id_inst[14:12])
+                    3'b000: begin // beq
+                        if (id_read_data1 == id_read_data2) begin
+                            branch_taken = 1;
+                        end
+                    end
+                    3'b001: begin // bne
+                        if (id_read_data1 != id_read_data2) begin
+                            branch_taken = 1;
+                        end
+                    end
+                    default: begin
+                    end
+                endcase
+            end
+            default: begin
+            end
+        endcase
+    end
+
+    always_comb begin
+        if (branch_taken) begin
+            if_Flush = 1'b1;
+            pc_branch_sel = 1'b1;
+        end else begin
+            if_Flush = 1'b0;
+            pc_branch_sel = 1'b0;
+        end
+    end
+
+endmodule
+
 module riscv_cpu(
 //    input logic clk,
 //    input logic rst_n,
@@ -685,7 +738,10 @@ module riscv_cpu(
 
     wire if_id_Write;
     wire PCWrite;
-    wire mem_PCSrc;
+
+    wire if_Flush;
+    wire pc_branch_sel;
+    wire [31:0] pc_branch_target;
 
     wire [31:0] id_imm32;
     wire [31:0] ex_imm32;
@@ -725,7 +781,7 @@ module riscv_cpu(
 
     wire mem_MemtoReg;
     wire mem_RegWrite;
-    wire mem_Branch;
+    wire mem_Branch; // 可以刪掉？
     wire mem_MemRead;
     wire mem_MemWrite;
     wire [31:0] mem_pc;
@@ -765,17 +821,21 @@ module riscv_cpu(
         .pc_current(pc_current)
     );
 
-    branch_unit branch_unit_0(
-        .inst(mem_inst),
-        .Branch(mem_Branch),
-        .zero(mem_Zero),
-        .branch_taken(mem_PCSrc)
+    control_hazard_detection_unit branch_unit_0(
+        .id_inst(id_inst),
+        .id_pc(id_pc),
+        .id_imm32(id_imm32),
+        .id_read_data1(id_read_data1),
+        .id_read_data2(id_read_data2),
+        .if_Flush(if_Flush),
+        .pc_branch_sel(pc_branch_sel),
+        .pc_branch_target(pc_branch_target)
     );
 
     mux2to1 mux2to1_pc(
-        .sel(mem_PCSrc),
+        .sel(pc_branch_sel),
         .A(pc_current + 32'd4),
-        .B(mem_pc),
+        .B(pc_branch_target),
         .mux_out(pc_next)
     );
 
@@ -806,6 +866,7 @@ module riscv_cpu(
         .clk(clk),
         .rst_n(rst_n),
         .if_id_Write(if_id_Write),
+        .if_Flush(if_Flush),
         .if_pc(pc_current),
         .if_inst(if_inst),
         .id_pc(id_pc),

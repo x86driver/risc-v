@@ -55,16 +55,19 @@ module instruction_memory(
 
     localparam INST_COUNT = 6;
 
+    /*
     logic [31:0] mem [0:INST_COUNT-1] = '{
-        32'h00001a63,
-        32'h00100093,
+        32'h00002083,
+        32'h00108a63,
         32'h00200113,
         32'h00300193,
         32'h00400213,
-        32'h00500293
+        32'h00500293,
+        32'h00600313
     };
+    */
 
-    /*從1加到10
+    /*從1加到10*/
     logic [31:0] mem [0:INST_COUNT-1] = '{
         32'h00000133,
         32'h00a00093,
@@ -73,7 +76,6 @@ module instruction_memory(
         32'hfe009ce3,
         32'h00202223
     };
-*/
 
     always_comb begin
         if (pc < 4*INST_COUNT) begin
@@ -410,6 +412,7 @@ endmodule
 module id_ex_pipeline(
     input logic clk,
     input logic rst_n,
+    input logic id_Flush,
 
     input logic id_ALUSrc,
     input logic id_MemtoReg,
@@ -462,6 +465,24 @@ module id_ex_pipeline(
 
             ex_pc <= 0;
             ex_inst <= 0;
+            ex_read_data1 <= 0;
+            ex_read_data2 <= 0;
+            ex_imm32 <= 0;
+            ex_funct3 <= 0;
+            ex_rd <= 0;
+        end else if (id_Flush) begin
+            ex_ALUSrc <= 0;
+            ex_MemtoReg <= 0;
+            ex_RegWrite <= 0;
+            ex_MemRead <= 0;
+            ex_MemWrite <= 0;
+            ex_Branch <= 0;
+            ex_ALUOp <= 0;
+            ex_isSub <= 0;
+            ex_isValid <= 0;
+
+            ex_pc <= 0;
+            ex_inst <= 32'h00000013; // NOP
             ex_read_data1 <= 0;
             ex_read_data2 <= 0;
             ex_imm32 <= 0;
@@ -668,12 +689,13 @@ module hazard_mux_2to2(
 endmodule
 
 module control_hazard_detection_unit(
-    input logic [31:0] id_inst,
-    input logic [31:0] id_pc,
-    input logic [31:0] id_imm32,
-    input logic [31:0] id_read_data1,
-    input logic [31:0] id_read_data2,
+    input logic [31:0] ex_inst,
+    input logic [31:0] ex_pc,
+    input logic [31:0] ex_imm32,
+    input logic [31:0] ex_mux3to1_alu_a_out,
+    input logic [31:0] ex_mux3to1_alu_b_out,
     output logic if_Flush,
+    output logic id_Flush,
     output logic pc_branch_sel,
     output logic [31:0] pc_branch_target
 );
@@ -682,17 +704,17 @@ module control_hazard_detection_unit(
 
     always_comb begin
         branch_taken = 0;
-        pc_branch_target = id_pc + id_imm32;
-        case (id_inst[6:0])
+        pc_branch_target = ex_pc + ex_imm32;
+        case (ex_inst[6:0])
             7'b1100011: begin // branch
-                unique case(id_inst[14:12])
+                unique case(ex_inst[14:12])
                     3'b000: begin // beq
-                        if (id_read_data1 == id_read_data2) begin
+                        if (ex_mux3to1_alu_a_out == ex_mux3to1_alu_b_out) begin
                             branch_taken = 1;
                         end
                     end
                     3'b001: begin // bne
-                        if (id_read_data1 != id_read_data2) begin
+                        if (ex_mux3to1_alu_a_out != ex_mux3to1_alu_b_out) begin
                             branch_taken = 1;
                         end
                     end
@@ -708,9 +730,11 @@ module control_hazard_detection_unit(
     always_comb begin
         if (branch_taken) begin
             if_Flush = 1'b1;
+            id_Flush = 1'b1;
             pc_branch_sel = 1'b1;
         end else begin
             if_Flush = 1'b0;
+            id_Flush = 1'b0;
             pc_branch_sel = 1'b0;
         end
     end
@@ -740,6 +764,7 @@ module riscv_cpu(
     wire PCWrite;
 
     wire if_Flush;
+    wire id_Flush;
     wire pc_branch_sel;
     wire [31:0] pc_branch_target;
 
@@ -822,12 +847,13 @@ module riscv_cpu(
     );
 
     control_hazard_detection_unit branch_unit_0(
-        .id_inst(id_inst),
-        .id_pc(id_pc),
-        .id_imm32(id_imm32),
-        .id_read_data1(id_read_data1),
-        .id_read_data2(id_read_data2),
+        .ex_inst(ex_inst),
+        .ex_pc(ex_pc),
+        .ex_imm32(ex_imm32),
+        .ex_mux3to1_alu_a_out(mux3to1_alu_a_out),
+        .ex_mux3to1_alu_b_out(mux3to1_alu_b_out),
         .if_Flush(if_Flush),
+        .id_Flush(id_Flush),
         .pc_branch_sel(pc_branch_sel),
         .pc_branch_target(pc_branch_target)
     );
@@ -876,6 +902,7 @@ module riscv_cpu(
     id_ex_pipeline id_ex_pipeline_0(
         .clk(clk),
         .rst_n(rst_n),
+        .id_Flush(id_Flush),
 
         .id_ALUSrc(id_ALUSrc),
         .id_MemtoReg(id_MemtoReg),

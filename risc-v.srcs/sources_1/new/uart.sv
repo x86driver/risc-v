@@ -57,7 +57,7 @@ module axi_uartlite_ctrl(
     state_t curr_state = IDLE, next_state = IDLE;
 
     logic read_data_valid_reg = 0;
-    logic write_done_reg = 1;
+    logic write_done_reg = 0;
     logic [31:0] read_data_reg = 0;
     assign read_data_valid = read_data_valid_reg;
     assign read_data_out = read_data_reg;
@@ -152,16 +152,12 @@ module axi_uartlite_ctrl(
             m_axi_rready  <= 0;
 
             read_data_reg <= 0;
-            write_done_reg <= 1;
+            write_done_reg <= 1'b0;
         end
         else begin
+            write_done_reg      <= 1'b0;
             case (curr_state)
                 IDLE: begin
-                    if (write_enable) begin
-                        write_done_reg <= 1'b0;
-                    end else begin
-                        write_done_reg <= 1'b1;
-                    end
                 end
 
                 // 初始狀態，準備好 AWVALID / WVALID
@@ -186,13 +182,17 @@ module axi_uartlite_ctrl(
                     m_axi_wvalid  <= 1'b0;
                     // 準備接收回應
                     m_axi_bready  <= 1'b1;
+
+                    if (m_axi_bvalid) begin
+                        // 產生一拍脈衝
+                        write_done_reg <= 1'b1;
+                    end
                 end
 
                 // 寫操作完成
                 WRITE_DONE: begin
                     // 不再需要 bready，或你也可以一直拉高
                     m_axi_bready <= 1'b0;
-                    write_done_reg <= 1'b1;
                 end
 
                 READ_IDLE: begin

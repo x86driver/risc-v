@@ -53,9 +53,36 @@ module instruction_memory(
     output logic [31:0] inst
 );
 
-    localparam INST_COUNT = 6;
+    localparam INST_COUNT = 4;
 
-    /*
+/* 測試 sw
+    logic [31:0] mem [0:INST_COUNT-1] = '{
+        32'h00500093,
+        32'h00102223
+    };
+*/
+
+/* test uart tx */
+    logic [31:0] mem [0:INST_COUNT-1] = '{
+        32'h40000093,
+        32'h04100113,
+        32'h0020a223,
+        32'h0020a223
+    };
+//        32'h0020a223,
+//        32'h0020a223
+//    };
+
+
+/* read uartlite status register, x3 = 0x404 */
+/*
+    logic [31:0] mem [0:INST_COUNT-1] = '{
+        32'h40000093,
+        32'h0080a103,
+        32'h002081b3
+    };
+*/
+/*
     logic [31:0] mem [0:INST_COUNT-1] = '{
         32'h00002083,
         32'h00108a63,
@@ -65,9 +92,10 @@ module instruction_memory(
         32'h00500293,
         32'h00600313
     };
-    */
+*/
 
     /*從1加到10*/
+/*
     logic [31:0] mem [0:INST_COUNT-1] = '{
         32'h00000133,
         32'h00a00093,
@@ -76,6 +104,7 @@ module instruction_memory(
         32'hfe009ce3,
         32'h00202223
     };
+*/
 
     always_comb begin
         if (pc < 4*INST_COUNT) begin
@@ -127,26 +156,28 @@ endmodule
 
 module address_decoder(
     input logic [31:0] address,
-    input logic MemRead,
-    input logic MemWrite,
-    output logic ram_en,
-    output logic uart_en
+    input logic mem_MemRead,
+    input logic mem_MemWrite,
+    output logic mem_data_MemRead,
+    output logic mem_data_MemWrite,
+    output logic mem_uart_MemRead,
+    output logic mem_uart_MemWrite
 );
 
     always_comb begin
-        if (MemRead || MemWrite) begin
-            if (address < UART_ADDR_OFFSET) begin : RAM
-                ram_en = 1;
-                uart_en = 0;
-            end else begin : UART
-                ram_en = 0;
-                uart_en = 1;
-            end
-        end else begin
-            ram_en = 0;
-            uart_en = 0;
+        if (address < UART_ADDR_OFFSET) begin : RAM
+            mem_data_MemRead = mem_MemRead;
+            mem_data_MemWrite = mem_MemWrite;
+            mem_uart_MemRead = 1'b0;
+            mem_uart_MemWrite = 1'b0;
+        end else begin : UART
+            mem_data_MemRead = 1'b0;
+            mem_data_MemWrite = 1'b0;
+            mem_uart_MemRead = mem_MemRead;
+            mem_uart_MemWrite = mem_MemWrite;
         end
     end
+
 endmodule
 
 module register_file(
@@ -412,6 +443,7 @@ endmodule
 module id_ex_pipeline(
     input logic clk,
     input logic rst_n,
+    input logic id_ex_Write,
     input logic id_Flush,
 
     input logic id_ALUSrc,
@@ -488,7 +520,7 @@ module id_ex_pipeline(
             ex_imm32 <= 0;
             ex_funct3 <= 0;
             ex_rd <= 0;
-        end else begin
+        end else if (id_ex_Write) begin
             ex_ALUSrc <= id_ALUSrc;
             ex_MemtoReg <= id_MemtoReg;
             ex_RegWrite <= id_RegWrite;
@@ -514,6 +546,7 @@ endmodule
 module ex_mem_pipeline(
     input logic clk,
     input logic rst_n,
+    input logic ex_mem_Write,
     input logic ex_MemtoReg,
     input logic ex_RegWrite,
     input logic ex_Branch,
@@ -551,7 +584,7 @@ module ex_mem_pipeline(
             mem_alu_out <= 0;
             mem_read_data2 <= 0;
             mem_rd <= 0;
-        end else begin
+        end else if (ex_mem_Write) begin
             mem_MemtoReg <= ex_MemtoReg;
             mem_RegWrite <= ex_RegWrite;
             mem_Branch <= ex_Branch;
@@ -571,6 +604,7 @@ endmodule
 module mem_wb_pipeline(
     input logic clk,
     input logic rst_n,
+    input logic mem_wb_Write,
     input logic mem_RegWrite,
     input logic mem_MemtoReg,
     input logic [31:0] mem_memory_read_data,
@@ -590,7 +624,7 @@ module mem_wb_pipeline(
             wb_memory_read_data <= 0;
             wb_alu_out <= 0;
             wb_rd <= 0;
-        end else begin
+        end else if (mem_wb_Write) begin
             wb_RegWrite <= mem_RegWrite;
             wb_MemtoReg <= mem_MemtoReg;
             wb_memory_read_data <= mem_memory_read_data;
@@ -741,15 +775,55 @@ module control_hazard_detection_unit(
 
 endmodule
 
+module memory_stall_detection_unit(
+    input logic mem_uart_MemRead,
+    input logic mem_uart_MemWrite,
+    input logic mem_uart_read_data_valid,
+    input logic mem_uart_write_done,
+    output logic PCWrite,
+    output logic if_id_Write,
+    output logic id_ex_Write,
+    output logic ex_mem_Write,
+    output logic mem_wb_Write
+);
+
+    always_comb begin
+        if (mem_uart_MemRead && !mem_uart_read_data_valid) begin
+            PCWrite = 0;
+            if_id_Write = 0;
+            id_ex_Write = 0;
+            ex_mem_Write = 0;
+            mem_wb_Write = 0;
+        end else if (mem_uart_MemWrite && !mem_uart_write_done) begin
+            PCWrite = 0;
+            if_id_Write = 0;
+            id_ex_Write = 0;
+            ex_mem_Write = 0;
+            mem_wb_Write = 0;
+        end else begin
+            PCWrite = 1;
+            if_id_Write = 1;
+            id_ex_Write = 1;
+            ex_mem_Write = 1;
+            mem_wb_Write = 1;
+        end
+    end
+
+endmodule
+
 module riscv_cpu(
 //    input logic clk,
 //    input logic rst_n,
+    output wire uart_tx
 );
 
     logic clk = 0;
     logic rst_n = 1;
     initial begin
         clk = 0;
+        rst_n = 0;
+        #200;
+        rst_n = 1;
     end
     always #10 clk = ~clk;
 
@@ -761,7 +835,12 @@ module riscv_cpu(
     wire [31:0] id_inst;
 
     wire if_id_Write;
+    wire id_ex_Write;
+    wire ex_mem_Write;
+    wire mem_wb_Write;
     wire PCWrite;
+    wire hazard_if_id_Write;
+    wire hazard_PCWrite;
 
     wire if_Flush;
     wire id_Flush;
@@ -834,14 +913,22 @@ module riscv_cpu(
     wire [31:0] wb_alu_out;
     wire [4:0] wb_rd;
 
+    wire mem_data_MemRead;
+    wire mem_data_MemWrite;
+    wire mem_uart_MemRead;
+    wire mem_uart_MemWrite;
+    wire mem_uart_read_data_valid;
+    wire mem_uart_write_done;
     wire [31:0] mem_memory_read_data;
+    wire [31:0] mem_uart_read_data;
+    wire [31:0] mem_mux_read_data;
 
     wire [31:0] wb_reg_write_data;
 
     program_counter pc_module(
         .clk(clk),
         .rst_n(rst_n),
-        .PCWrite(PCWrite),
+        .PCWrite(PCWrite && hazard_PCWrite),
         .pc_next(pc_next),
         .pc_current(pc_current)
     );
@@ -875,8 +962,8 @@ module riscv_cpu(
         .ex_rd(ex_rd),
         .id_rs1(id_inst[19:15]),
         .id_rs2(id_inst[24:20]),
-        .if_id_Write(if_id_Write),
-        .PCWrite(PCWrite),
+        .if_id_Write(hazard_if_id_Write),
+        .PCWrite(hazard_PCWrite),
         .hazard_control_mux_sel(hazard_control_mux_sel)
     );
 
@@ -891,7 +978,7 @@ module riscv_cpu(
     if_id_pipeline if_id_pipeline_0(
         .clk(clk),
         .rst_n(rst_n),
-        .if_id_Write(if_id_Write),
+        .if_id_Write(if_id_Write && hazard_if_id_Write),
         .if_Flush(if_Flush),
         .if_pc(pc_current),
         .if_inst(if_inst),
@@ -902,6 +989,7 @@ module riscv_cpu(
     id_ex_pipeline id_ex_pipeline_0(
         .clk(clk),
         .rst_n(rst_n),
+        .id_ex_Write(id_ex_Write),
         .id_Flush(id_Flush),
 
         .id_ALUSrc(id_ALUSrc),
@@ -944,6 +1032,7 @@ module riscv_cpu(
     ex_mem_pipeline ex_mem_pipeline0(
         .clk(clk),
         .rst_n(rst_n),
+        .ex_mem_Write(ex_mem_Write),
         .ex_MemtoReg(ex_MemtoReg),
         .ex_RegWrite(ex_RegWrite),
         .ex_Branch(ex_Branch),
@@ -953,7 +1042,7 @@ module riscv_cpu(
         .ex_inst(ex_inst),
         .ex_Zero(ex_Zero),
         .ex_alu_out(ex_alu_out),
-        .ex_read_data2(ex_read_data2),
+        .ex_read_data2(mux3to1_alu_b_out),
         .ex_rd(ex_rd),
         .mem_MemtoReg(mem_MemtoReg),
         .mem_RegWrite(mem_RegWrite),
@@ -971,9 +1060,10 @@ module riscv_cpu(
     mem_wb_pipeline mem_wb_pipeline_0(
         .clk(clk),
         .rst_n(rst_n),
+        .mem_wb_Write(mem_wb_Write),
         .mem_RegWrite(mem_RegWrite),
         .mem_MemtoReg(mem_MemtoReg),
-        .mem_memory_read_data(mem_memory_read_data),
+        .mem_memory_read_data(mem_mux_read_data),
         .mem_alu_out(mem_alu_out),
         .mem_rd(mem_rd),
         .wb_RegWrite(wb_RegWrite),
@@ -1068,13 +1158,55 @@ module riscv_cpu(
         .mux_out(wb_reg_write_data)
     );
 
+    address_decoder address_decoder_0(
+        .address(mem_alu_out),
+        .mem_MemRead(mem_MemRead),
+        .mem_MemWrite(mem_MemWrite),
+        .mem_data_MemRead(mem_data_MemRead),
+        .mem_data_MemWrite(mem_data_MemWrite),
+        .mem_uart_MemRead(mem_uart_MemRead),
+        .mem_uart_MemWrite(mem_uart_MemWrite)
+    );
+
     data_memory data_memory_0(
         .clk(clk),
         .address(mem_alu_out),
         .write_data(mem_read_data2),
-        .MemRead(mem_MemRead),
-        .MemWrite(mem_MemWrite),
+        .MemRead(mem_data_MemRead),
+        .MemWrite(mem_data_MemWrite),
         .read_data(mem_memory_read_data)
+    );
+
+    uart uart_0(
+        .clk(clk),
+        .rst_n(rst_n),
+        .MemRead(mem_uart_MemRead),
+        .MemWrite(mem_uart_MemWrite),
+        .address(mem_alu_out - UART_ADDR_OFFSET),
+        .write_data(mem_read_data2),
+        .read_data_valid(mem_uart_read_data_valid),
+        .read_data(mem_uart_read_data),
+        .write_done(mem_uart_write_done),
+        .tx(uart_tx)
+    );
+
+    mux2to1 mux2to1_mem_uart(
+        .sel(mem_data_MemRead),
+        .A(mem_uart_read_data),
+        .B(mem_memory_read_data),
+        .mux_out(mem_mux_read_data)
+    );
+
+    memory_stall_detection_unit memory_stall_detection_unit_0(
+        .mem_uart_MemRead(mem_uart_MemRead),
+        .mem_uart_MemWrite(mem_uart_MemWrite),
+        .mem_uart_read_data_valid(mem_uart_read_data_valid),
+        .mem_uart_write_done(mem_uart_write_done),
+        .PCWrite(PCWrite),
+        .if_id_Write(if_id_Write),
+        .id_ex_Write(id_ex_Write),
+        .ex_mem_Write(ex_mem_Write),
+        .mem_wb_Write(mem_wb_Write)
     );
 
 endmodule

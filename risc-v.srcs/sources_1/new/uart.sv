@@ -240,7 +240,8 @@ module uart(
     output logic read_data_valid,
     output logic [31:0] read_data,
     output logic write_done,
-    output wire tx
+    output wire tx,
+    input logic rx
 );
 
     wire [3:0]   axi_awaddr;
@@ -267,6 +268,8 @@ module uart(
     wire         axi_rvalid;
     wire         axi_rready;
 
+    wire uart_interrupt;
+
     axi_uartlite_0 uartlite_0(
         .s_axi_aclk(clk),
         .s_axi_aresetn(rst_n),
@@ -288,7 +291,8 @@ module uart(
         .s_axi_rvalid(axi_rvalid),
         .s_axi_rready(axi_rready),
         .tx(tx),
-        .rx(1'b1)
+        .rx(rx),
+        .interrupt(uart_interrupt)
     );
 
     axi_uartlite_ctrl uartlite_ctrl_0(

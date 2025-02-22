@@ -53,26 +53,43 @@ module instruction_memory(
     output logic [31:0] inst
 );
 
-    localparam INST_COUNT = 4;
+    localparam INST_COUNT = 6;
 
-/* 測試 sw
+/* uart rx with interrupt */
+
+    logic [31:0] mem [INST_COUNT] = '{
+        32'h40000093, // addi x1, x0, 0x400
+        32'h01000113, // addi x2, x0, 16
+        32'h0020a623, // sw x2, 0xc(x1)
+        32'h0000a183, // _RECV: lw x3, 0x0(x1)
+        32'hfe000ee3, // beq x0, x0, _RECV
+        32'h00400213  // addi x4, x0, 4
+    };
+
+/* 送 16 次 tx */
+/*
     logic [31:0] mem [0:INST_COUNT-1] = '{
-        32'h00500093,
-        32'h00102223
+        32'h40000093, // addi x1, x0, 0x400
+        32'h05500113, // addi x2, x0, 0x55
+        32'h01000193, // li x3, 16
+        32'h0020a223, // _SEND: sw x2, 4(x1)
+        32'hfff18193, // addi x3, x3, -1
+        32'hfe019ce3, // bne x3, x0, _SEND
+        32'h0080a203  // lw x4, 8(x1)
     };
 */
-
-/* test uart tx */
+/* test uart rx */
+/*
     logic [31:0] mem [0:INST_COUNT-1] = '{
-        32'h40000093,
-        32'h04100113,
-        32'h0020a223,
-        32'h0020a223
+        32'h40000093, // addi x1, x0, 0x400
+        32'h0000a183, // _RECV: lw x3, 0x0(x1)
+        32'hfe000ee3, // beq x0, x0, _RECV
+        32'h00400213, // addi x4, x0, 4
+        32'h00500293, // addi x5, x0, 5
+        32'h00600313, // addi x6, x0, 6
+        32'h00700393  // addi x7, x0, 7
     };
-//        32'h0020a223,
-//        32'h0020a223
-//    };
-
+*/
 
 /* read uartlite status register, x3 = 0x404 */
 /*
@@ -84,16 +101,39 @@ module instruction_memory(
 */
 /*
     logic [31:0] mem [0:INST_COUNT-1] = '{
-        32'h00002083,
-        32'h00108a63,
-        32'h00200113,
-        32'h00300193,
-        32'h00400213,
-        32'h00500293,
-        32'h00600313
+        32'h00002083, // lw x1, 0(x0)
+        32'h00108a63, // beq x1, x1, .L1
+        32'h00200113, // addi x2, x0, 2
+        32'h00300193, // addi x3, x0, 3
+        32'h00400213, // addi x4, x0, 4
+        32'h00500293, // addi x5, x0, 5
+        32'h00600313  // .L1: addi x6, x0, 6
     };
 */
-
+/* 分開測試EX/MEM hazard、MEM/WB hazard 與 load-use hazard */
+/*
+    logic [31:0] mem [0:INST_COUNT-1] = '{
+        32'h00a00093, // addi   x1, x0, 10  # x1 = 0xa
+        32'h00500113, // addi   x2, x0, 5   # x2 = 0x5
+        32'h002081b3, // add    x3, x1, x2  # x3 = 0xf
+        32'h40218233, // sub    x4, x3, x2  # x4 = 0xa
+        32'h00408263, // beq    x1, x4, _NEXT
+        32'h003202b3, // _NEXT: add    x5, x4, x3  # x5 = 0x19
+        32'h00800313, // addi   x6, x0, 8   # x6 = 8
+        32'h00432383, // lw     x7, 4(x6)   # x7 = 0xabc
+        32'h00730433  // add    x8, x6, x7  # x8 = 0xac4
+    };
+*/
+/* 從 ram lw, 再直接寫入 sw 到 uart, 並且測試 not taken 的 beq */
+/*
+    logic [31:0] mem [0:INST_COUNT-1] = '{
+        32'h40000093, // _start: addi x1, x0, 0x400
+        32'h00002103, // lw x2, 0(x0)
+        32'h0020a223, // sw x2, 4(x1)
+        32'hfe208ae3, // beq x1, x2, _start
+        32'h00110113  // addi x2, x2, 1
+    };
+*/
     /*從1加到10*/
 /*
     logic [31:0] mem [0:INST_COUNT-1] = '{
@@ -105,7 +145,14 @@ module instruction_memory(
         32'h00202223
     };
 */
-
+/* 測試 x2 會不會被寫入 也就是測試 flush 訊號來的時間對不對 */
+/*
+    logic [31:0] mem [0:INST_COUNT-1] = '{
+        32'h00100093, // _start: addi x1, x0, 1
+        32'hfe009ee3, // bne x1,	x0, _start
+        32'h00200113  // addi x2, x0, 2
+    };
+*/
     always_comb begin
         if (pc < 4*INST_COUNT) begin
             inst = mem[pc[31:2]];
@@ -737,8 +784,11 @@ module control_hazard_detection_unit(
     logic branch_taken = 0;
 
     always_comb begin
-        branch_taken = 0;
-        pc_branch_target = ex_pc + ex_imm32;
+        branch_taken      = 1'b0;
+        if_Flush          = 1'b0;
+        id_Flush          = 1'b0;
+        pc_branch_sel     = 1'b0;
+        pc_branch_target  = ex_pc;
         case (ex_inst[6:0])
             7'b1100011: begin // branch
                 unique case(ex_inst[14:12])
@@ -759,53 +809,115 @@ module control_hazard_detection_unit(
             default: begin
             end
         endcase
-    end
 
-    always_comb begin
         if (branch_taken) begin
-            if_Flush = 1'b1;
-            id_Flush = 1'b1;
-            pc_branch_sel = 1'b1;
-        end else begin
-            if_Flush = 1'b0;
-            id_Flush = 1'b0;
-            pc_branch_sel = 1'b0;
+            pc_branch_sel    = 1'b1;              // pc mux 選 branch
+            pc_branch_target = ex_pc + ex_imm32;  // 計算好的目標位址
+            if_Flush         = 1'b1;              // flush IF 取指
+            id_Flush         = 1'b1;              // flush ID 解碼
         end
     end
 
 endmodule
 
-module memory_stall_detection_unit(
-    input logic mem_uart_MemRead,
-    input logic mem_uart_MemWrite,
-    input logic mem_uart_read_data_valid,
-    input logic mem_uart_write_done,
-    output logic PCWrite,
-    output logic if_id_Write,
-    output logic id_ex_Write,
-    output logic ex_mem_Write,
-    output logic mem_wb_Write
+module stall_unit(
+    // -------------------
+    // 1) hazard_stall : load-use hazard
+    // -------------------
+    input  logic       ex_MemRead,   // EX 階段有指令正在讀記憶體 (lw)
+    input  logic [4:0] ex_rd,        // 該 lw 寫回的暫存器
+    input  logic [4:0] id_rs1,       // 下一條指令在 ID 階段的讀取暫存器1
+    input  logic [4:0] id_rs2,       // 下一條指令在 ID 階段的讀取暫存器2
+
+    // -------------------
+    // 2) mem_stall : memory/uart stall
+    // -------------------
+    input  logic       mem_uart_MemRead,
+    input  logic       mem_uart_MemWrite,
+    input  logic       mem_uart_read_data_valid,
+    input  logic       mem_uart_write_done,
+
+    // -------------------
+    // 輸出：給 pipeline 的各級 write enable
+    // 以及控制訊號是否要清 0
+    // -------------------
+    output logic       hazard_control_mux_sel, // ID 階段控制訊號 mux
+    output logic       PCWrite,
+    output logic       if_id_Write,
+    output logic       id_ex_Write,
+    output logic       ex_mem_Write,
+    output logic       mem_wb_Write
 );
 
+    logic hazard_stall;
+    logic mem_stall;
+
+    //==========================================================
+    // (1) load-use hazard 偵測
+    //==========================================================
     always_comb begin
-        if (mem_uart_MemRead && !mem_uart_read_data_valid) begin
-            PCWrite = 0;
-            if_id_Write = 0;
-            id_ex_Write = 0;
-            ex_mem_Write = 0;
-            mem_wb_Write = 0;
-        end else if (mem_uart_MemWrite && !mem_uart_write_done) begin
-            PCWrite = 0;
-            if_id_Write = 0;
-            id_ex_Write = 0;
-            ex_mem_Write = 0;
-            mem_wb_Write = 0;
+        hazard_stall = 1'b0;
+        if (ex_MemRead && (ex_rd != 0)) begin
+            if ((ex_rd == id_rs1) || (ex_rd == id_rs2)) begin
+                hazard_stall = 1'b1;
+            end
+        end
+    end
+
+    //==========================================================
+    // (2) memory/uart stall 偵測
+    //==========================================================
+    always_comb begin
+        mem_stall = 1'b0;
+        // 需要多週期讀
+        if (mem_uart_MemRead  && !mem_uart_read_data_valid) begin
+            mem_stall = 1'b1;
+        end
+        // 需要多週期寫
+        if (mem_uart_MemWrite && !mem_uart_write_done) begin
+            mem_stall = 1'b1;
+        end
+    end
+
+    //==========================================================
+    // (3) 合併結果
+    //==========================================================
+    // 先判斷 mem_stall (最優先)，如果是 mem_stall 就要整條 pipeline freeze
+    // 如果不是 mem_stall，才考慮是否 hazard_stall
+    //==========================================================
+    always_comb begin
+        if (mem_stall) begin
+            // === 全部 freeze ===
+            PCWrite     = 1'b0;
+            if_id_Write = 1'b0;
+            id_ex_Write = 1'b0;
+            ex_mem_Write= 1'b0;
+            mem_wb_Write= 1'b0;
+
+            // hazard_control_mux_sel 不重要了
+            // (因為整條 pipeline 都不動, ID 的指令也不會再改變)
+            hazard_control_mux_sel = 1'b1; // or 1'b0, both are fine
+        end else if (hazard_stall) begin
+            // === load-use hazard → freeze 前半段(PC/IF_ID) ===
+            PCWrite     = 1'b0;   // freeze PC
+            if_id_Write = 1'b0;   // freeze IF/ID
+            // 讓後半段繼續
+            id_ex_Write = 1'b1;
+            ex_mem_Write= 1'b1;
+            mem_wb_Write= 1'b1;
+
+            // 另外必須把當前 ID 階段的指令控制訊號清成 NOP
+            // 用 hazard_control_mux_sel=0 來達成
+            hazard_control_mux_sel = 1'b0;
         end else begin
-            PCWrite = 1;
-            if_id_Write = 1;
-            id_ex_Write = 1;
-            ex_mem_Write = 1;
-            mem_wb_Write = 1;
+            // === 無任何 stall ===
+            PCWrite     = 1'b1;
+            if_id_Write = 1'b1;
+            id_ex_Write = 1'b1;
+            ex_mem_Write= 1'b1;
+            mem_wb_Write= 1'b1;
+
+            hazard_control_mux_sel = 1'b1;
         end
     end
 
@@ -814,8 +926,12 @@ endmodule
 module riscv_cpu(
 //    input logic clk,
 //    input logic rst_n,
+//    input logic uart_rx,
     output wire uart_tx
 );
+
+    logic uart_rx = 1;
+    localparam integer BIT_PERIOD = 104160;
 
     logic clk = 0;
     logic rst_n = 1;
@@ -824,8 +940,28 @@ module riscv_cpu(
         rst_n = 0;
         #200;
         rst_n = 1;
+        #1000;
+        send_uart(8'h41);
+        #(BIT_PERIOD * 2);
+        //$finish;
     end
     always #10 clk = ~clk;
+
+    task send_uart(input [7:0] data);
+        integer i;
+        begin
+            uart_rx = 0;
+            #(BIT_PERIOD);
+
+            for (i = 0; i < 8; i++) begin
+                uart_rx = data[i];
+                #(BIT_PERIOD);
+            end
+
+            uart_rx = 1;
+            #(BIT_PERIOD);
+        end
+    endtask
 
     wire [31:0] pc_current;
     wire [31:0] pc_next;
@@ -839,8 +975,6 @@ module riscv_cpu(
     wire ex_mem_Write;
     wire mem_wb_Write;
     wire PCWrite;
-    wire hazard_if_id_Write;
-    wire hazard_PCWrite;
 
     wire if_Flush;
     wire id_Flush;
@@ -925,10 +1059,14 @@ module riscv_cpu(
 
     wire [31:0] wb_reg_write_data;
 
+    wire hazard_control_mux_sel;
+    wire PCWrite_final;
+    assign PCWrite_final = pc_branch_sel ? 1'b1 : PCWrite;
+
     program_counter pc_module(
         .clk(clk),
         .rst_n(rst_n),
-        .PCWrite(PCWrite && hazard_PCWrite),
+        .PCWrite(PCWrite_final),
         .pc_next(pc_next),
         .pc_current(pc_current)
     );
@@ -957,14 +1095,21 @@ module riscv_cpu(
         .inst(if_inst)
     );
 
-    hazard_detection_unit hazard_detection_unit_0(
+    stall_unit stall_unit_0(
         .ex_MemRead(ex_MemRead),
         .ex_rd(ex_rd),
         .id_rs1(id_inst[19:15]),
         .id_rs2(id_inst[24:20]),
-        .if_id_Write(hazard_if_id_Write),
-        .PCWrite(hazard_PCWrite),
-        .hazard_control_mux_sel(hazard_control_mux_sel)
+        .mem_uart_MemRead(mem_uart_MemRead),
+        .mem_uart_MemWrite(mem_uart_MemWrite),
+        .mem_uart_read_data_valid(mem_uart_read_data_valid),
+        .mem_uart_write_done(mem_uart_write_done),
+        .hazard_control_mux_sel(hazard_control_mux_sel),
+        .PCWrite(PCWrite),
+        .if_id_Write(if_id_Write),
+        .id_ex_Write(id_ex_Write),
+        .ex_mem_Write(ex_mem_Write),
+        .mem_wb_Write(mem_wb_Write)
     );
 
     hazard_mux_2to2 hazard_mux_2to2_0(
@@ -978,7 +1123,7 @@ module riscv_cpu(
     if_id_pipeline if_id_pipeline_0(
         .clk(clk),
         .rst_n(rst_n),
-        .if_id_Write(if_id_Write && hazard_if_id_Write),
+        .if_id_Write(if_id_Write),
         .if_Flush(if_Flush),
         .if_pc(pc_current),
         .if_inst(if_inst),
@@ -1187,7 +1332,8 @@ module riscv_cpu(
         .read_data_valid(mem_uart_read_data_valid),
         .read_data(mem_uart_read_data),
         .write_done(mem_uart_write_done),
-        .tx(uart_tx)
+        .tx(uart_tx),
+        .rx(uart_rx)
     );
 
     mux2to1 mux2to1_mem_uart(
@@ -1195,18 +1341,6 @@ module riscv_cpu(
         .A(mem_uart_read_data),
         .B(mem_memory_read_data),
         .mux_out(mem_mux_read_data)
-    );
-
-    memory_stall_detection_unit memory_stall_detection_unit_0(
-        .mem_uart_MemRead(mem_uart_MemRead),
-        .mem_uart_MemWrite(mem_uart_MemWrite),
-        .mem_uart_read_data_valid(mem_uart_read_data_valid),
-        .mem_uart_write_done(mem_uart_write_done),
-        .PCWrite(PCWrite),
-        .if_id_Write(if_id_Write),
-        .id_ex_Write(id_ex_Write),
-        .ex_mem_Write(ex_mem_Write),
-        .mem_wb_Write(mem_wb_Write)
     );
 
 endmodule

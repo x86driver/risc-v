@@ -1,0 +1,6 @@
+set_property PACKAGE_PIN Y18 [get_ports sys_clk]
+set_property IOSTANDARD LVCMOS33 [get_ports sys_clk]
+set_property PACKAGE_PIN M15 [get_ports uart_tx]
+set_property IOSTANDARD LVCMOS33 [get_ports uart_tx]
+set_property PACKAGE_PIN F15 [get_ports btn_reset_n]
+set_property IOSTANDARD LVCMOS33 [get_ports btn_reset_n]

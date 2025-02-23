@@ -399,16 +399,11 @@ module program_counter(
     output logic [31:0] pc_current
 );
 
-    logic power_on_reset = 0;
-
     always_ff @(posedge clk) begin
         if (!rst_n) begin
             pc_current <= 0;
         end else begin
-            if (!power_on_reset) begin
-                pc_current <= 0;
-                power_on_reset <= 1'b1;
-            end else if (PCWrite) begin
+            if (PCWrite) begin
                 pc_current <= pc_next;
             end
         end
@@ -923,9 +918,31 @@ module stall_unit(
 
 endmodule
 
+module power_on_reset(
+    input logic clk,
+    input logic btn_reset_n,
+    output logic rst_n
+);
+
+    localparam RESET_CYCLE = 100;
+    integer counter = 0;
+    always_ff @(posedge clk) begin
+        if (!btn_reset_n) begin
+            rst_n <= 0;
+            counter <= 0;
+        end else if (counter == RESET_CYCLE) begin
+            rst_n <= 1;
+        end else begin
+            rst_n <= 0;
+            counter <= counter + 1;
+        end
+    end
+
+endmodule
+
 module riscv_cpu(
-//    input logic clk,
-//    input logic rst_n,
+    input logic sys_clk,
+    input logic btn_reset_n,
 //    input logic uart_rx,
     output wire uart_tx
 );
@@ -933,19 +950,26 @@ module riscv_cpu(
     logic uart_rx = 1;
     localparam integer BIT_PERIOD = 104160;
 
+`ifdef XILINX_SIMULATOR
     logic clk = 0;
-    logic rst_n = 1;
+    always #10 clk = ~clk;
+`else
+    wire clk = sys_clk;
+`endif
+
+    wire rst_n;
+    power_on_reset power_on_reset_0(
+        .clk(clk),
+        .btn_reset_n(btn_reset_n),
+        .rst_n(rst_n)
+    );
+
     initial begin
-        clk = 0;
-        rst_n = 0;
-        #200;
-        rst_n = 1;
         #1000;
         send_uart(8'h41);
         #(BIT_PERIOD * 2);
         //$finish;
     end
-    always #10 clk = ~clk;
 
     task send_uart(input [7:0] data);
         integer i;

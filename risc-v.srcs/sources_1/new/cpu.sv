@@ -53,10 +53,10 @@ module instruction_memory(
     output logic [31:0] inst
 );
 
-    localparam INST_COUNT = 6;
+    localparam INST_COUNT = 8;
 
 /* uart rx with interrupt */
-
+/*
     logic [31:0] mem [INST_COUNT] = '{
         32'h40000093, // addi x1, x0, 0x400
         32'h01000113, // addi x2, x0, 16
@@ -65,7 +65,18 @@ module instruction_memory(
         32'hfe000ee3, // beq x0, x0, _RECV
         32'h00400213  // addi x4, x0, 4
     };
-
+*/
+/* 送 A-P 共 16 個字母 */
+    logic [31:0] mem [0:INST_COUNT-1] = '{
+        32'h40000093, // addi x1, x0, 0x400
+        32'h04100113, // addi x2, x0, 'A'
+        32'h01000193, // li x3, 16
+        32'h0020a223, // _SEND: sw x2, 4(x1)
+        32'hfff18193, // addi x3, x3, -1
+        32'h00110113, // addi x2, x2, 1
+        32'hfe019ae3, // bne x3, x0, _SEND
+        32'h0080a203  // lw x4, 8(x1)
+    };
 /* 送 16 次 tx */
 /*
     logic [31:0] mem [0:INST_COUNT-1] = '{

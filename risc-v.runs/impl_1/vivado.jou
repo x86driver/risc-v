@@ -1,0 +1,24 @@
+#-----------------------------------------------------------
+# Vivado v2024.2 (64-bit)
+# SW Build 5239630 on Fri Nov 08 22:34:34 MST 2024
+# IP Build 5239520 on Sun Nov 10 16:12:51 MST 2024
+# SharedData Build 5239561 on Fri Nov 08 14:39:27 MST 2024
+# Start of session at: Sun Feb 23 01:58:22 2025
+# Process ID         : 65296
+# Current directory  : /pro/fpga/risc-v/risc-v.runs/impl_1
+# Command line       : vivado -log riscv_cpu.vdi -applog -product Vivado -messageDb vivado.pb -mode batch -source riscv_cpu.tcl -notrace
+# Log file           : /pro/fpga/risc-v/risc-v.runs/impl_1/riscv_cpu.vdi
+# Journal file       : /pro/fpga/risc-v/risc-v.runs/impl_1/vivado.jou
+# Running On         : a6f128c43745
+# Platform           : unknown
+# Operating System   : unknown
+# Processor Detail   : 
+# CPU Frequency      : 
+# CPU Physical cores : 16
+# CPU Logical cores  : 16
+# Host memory        : 101061 MB
+# Swap memory        : 1073 MB
+# Total Virtual      : 102135 MB
+# Available Virtual  : 85623 MB
+#-----------------------------------------------------------
+source riscv_cpu.tcl -notrace

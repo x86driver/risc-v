@@ -1,0 +1,102 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2024.2 (lin64) Build 5239630 Fri Nov 08 22:34:34 MST 2024
+| Date         : Sun Feb 23 01:57:18 2025
+| Host         : a6f128c43745 running 64-bit unknown
+| Command      : report_control_sets -verbose -file riscv_cpu_control_sets_placed.rpt
+| Design       : riscv_cpu
+| Device       : xc7a200t
+---------------------------------------------------------------------------------------------------------------------------------------------
+
+Control Set Information
+
+Table of Contents
+-----------------
+1. Summary
+2. Histogram
+3. Flip-Flop Distribution
+4. Detailed Control Set Information
+
+1. Summary
+----------
+
++----------------------------------------------------------+-------+
+|                          Status                          | Count |
++----------------------------------------------------------+-------+
+| Total control sets                                       |    24 |
+|    Minimum number of control sets                        |    24 |
+|    Addition due to synthesis replication                 |     0 |
+|    Addition due to physical synthesis replication        |     0 |
+| Unused register locations in slices containing registers |    55 |
++----------------------------------------------------------+-------+
+* Control sets can be merged at opt_design using control_set_merge or merge_equivalent_drivers
+** Run report_qor_suggestions for automated merging and remapping suggestions
+
+
+2. Histogram
+------------
+
++--------------------+-------+
+|       Fanout       | Count |
++--------------------+-------+
+| Total control sets |    24 |
+| >= 0 to < 4        |     1 |
+| >= 4 to < 6        |     2 |
+| >= 6 to < 8        |     3 |
+| >= 8 to < 10       |     5 |
+| >= 10 to < 12      |     3 |
+| >= 12 to < 14      |     0 |
+| >= 14 to < 16      |     1 |
+| >= 16              |     9 |
++--------------------+-------+
+* Control sets can be remapped at either synth_design or opt_design
+
+
+3. Flip-Flop Distribution
+-------------------------
+
++--------------+-----------------------+------------------------+-----------------+--------------+
+| Clock Enable | Synchronous Set/Reset | Asynchronous Set/Reset | Total Registers | Total Slices |
++--------------+-----------------------+------------------------+-----------------+--------------+
+| No           | No                    | No                     |              14 |            7 |
+| No           | No                    | Yes                    |               8 |            3 |
+| No           | Yes                   | No                     |              51 |           19 |
+| Yes          | No                    | No                     |               2 |            1 |
+| Yes          | No                    | Yes                    |              20 |            6 |
+| Yes          | Yes                   | No                     |             418 |          165 |
++--------------+-----------------------+------------------------+-----------------+--------------+
+
+
+4. Detailed Control Set Information
+-----------------------------------
+
++--------------------+-----------------------------------------------------------------------------------------------------+--------------------------------------------------------------------------------------------------------------+------------------+----------------+--------------+
+|    Clock Signal    |                                            Enable Signal                                            |                                               Set/Reset Signal                                               | Slice Load Count | Bel Load Count | Bels / Slice |
++--------------------+-----------------------------------------------------------------------------------------------------+--------------------------------------------------------------------------------------------------------------+------------------+----------------+--------------+
+|  sys_clk_IBUF_BUFG | uart_0/uartlite_ctrl_0/m_axi_araddr[3]_i_1_n_0                                                      | power_on_reset_0/rst_n_reg_0[0]                                                                              |                1 |              2 |         2.00 |
+|  sys_clk_IBUF_BUFG | uart_0/uartlite_0/U0/AXI_LITE_IPIF_I/I_SLAVE_ATTACHMENT/start2                                      | uart_0/uartlite_0/U0/AXI_LITE_IPIF_I/I_SLAVE_ATTACHMENT/I_DECODER/cs_ce_clr                                  |                2 |              4 |         2.00 |
+|  sys_clk_IBUF_BUFG | uart_0/uartlite_0/U0/UARTLITE_CORE_I/BAUD_RATE_I/en_16x_Baud                                        |                                                                                                              |                1 |              4 |         4.00 |
+|  sys_clk_IBUF_BUFG |                                                                                                     | uart_0/uartlite_0/U0/UARTLITE_CORE_I/UARTLITE_RX_I/SRL_FIFO_I/I_SRL_FIFO_RBU_F/CNTR_INCR_DECR_ADDN_F_I/SS[0] |                3 |              6 |         2.00 |
+|  sys_clk_IBUF_BUFG |                                                                                                     | uart_0/uartlite_0/U0/UARTLITE_CORE_I/UARTLITE_TX_I/SRL_FIFO_I/I_SRL_FIFO_RBU_F/CNTR_INCR_DECR_ADDN_F_I/SS[0] |                3 |              6 |         2.00 |
+|  sys_clk_IBUF_BUFG | uart_0/uartlite_0/U0/UARTLITE_CORE_I/BAUD_RATE_I/en_16x_Baud                                        | uart_0/uartlite_0/U0/UARTLITE_CORE_I/UARTLITE_RX_I/SERIAL_TO_PARALLEL[8].fifo_din[8]_i_1_n_0                 |                2 |              7 |         3.50 |
+|  sys_clk_IBUF_BUFG | uart_0/uartlite_0/U0/AXI_LITE_IPIF_I/I_SLAVE_ATTACHMENT/I_DECODER/fifo_wr                           |                                                                                                              |                1 |              8 |         8.00 |
+|  sys_clk_IBUF_BUFG | uart_0/uartlite_0/U0/AXI_LITE_IPIF_I/I_SLAVE_ATTACHMENT/s_axi_rresp_i                               | uart_0/uartlite_0/U0/AXI_LITE_IPIF_I/I_SLAVE_ATTACHMENT/rst                                                  |                2 |              8 |         4.00 |
+|  sys_clk_IBUF_BUFG | uart_0/uartlite_0/U0/UARTLITE_CORE_I/UARTLITE_RX_I/SRL_FIFO_I/I_SRL_FIFO_RBU_F/DYNSHREG_F_I/fifo_wr |                                                                                                              |                1 |              8 |         8.00 |
+|  sys_clk_IBUF_BUFG | uart_0/uartlite_ctrl_0/read_data_reg                                                                | power_on_reset_0/rst_n_reg_0[0]                                                                              |                2 |              8 |         4.00 |
+|  sys_clk_IBUF_BUFG |                                                                                                     | power_on_reset_0/rst_n_reg_0[0]                                                                              |                3 |              8 |         2.67 |
+|  sys_clk_IBUF_BUFG | uart_0/uartlite_ctrl_0/m_axi_awaddr[3]_i_1_n_0                                                      | power_on_reset_0/rst_n_reg_0[0]                                                                              |                3 |             10 |         3.33 |
+|  sys_clk_IBUF_BUFG | ex_mem_pipeline0/write_done_reg_reg                                                                 | id_ex_pipeline_0/ex_inst_reg[6]_0                                                                            |                2 |             10 |         5.00 |
+|  sys_clk_IBUF_BUFG |                                                                                                     | uart_0/uartlite_0/U0/AXI_LITE_IPIF_I/I_SLAVE_ATTACHMENT/rst                                                  |                3 |             10 |         3.33 |
+|  sys_clk_IBUF_BUFG |                                                                                                     |                                                                                                              |                7 |             14 |         2.00 |
+|  sys_clk_IBUF_BUFG | uart_0/uartlite_0/U0/UARTLITE_CORE_I/BAUD_RATE_I/en_16x_Baud                                        | uart_0/uartlite_0/U0/UARTLITE_CORE_I/UARTLITE_RX_I/s_axi_aresetn_0                                           |                7 |             28 |         4.00 |
+|  sys_clk_IBUF_BUFG |                                                                                                     | uart_0/uartlite_0/U0/UARTLITE_CORE_I/UARTLITE_RX_I/s_axi_aresetn_0                                           |               10 |             29 |         2.90 |
+|  sys_clk_IBUF_BUFG | ex_mem_pipeline0/MemWrite                                                                           |                                                                                                              |                8 |             32 |         4.00 |
+|  sys_clk_IBUF_BUFG | ex_mem_pipeline0/E[0]                                                                               | power_on_reset_0/rst_n_reg_0[0]                                                                              |                8 |             32 |         4.00 |
+|  sys_clk_IBUF_BUFG | ex_mem_pipeline0/if_id_Write                                                                        | id_ex_pipeline_0/SR[0]                                                                                       |               11 |             32 |         2.91 |
+|  sys_clk_IBUF_BUFG | power_on_reset_0/counter                                                                            | power_on_reset_0/clear                                                                                       |                8 |             32 |         4.00 |
+|  sys_clk_IBUF_BUFG | mem_wb_pipeline_0/wb_RegWrite_reg_0                                                                 |                                                                                                              |               11 |             88 |         8.00 |
+|  sys_clk_IBUF_BUFG | ex_mem_pipeline0/mem_wb_Write                                                                       | id_ex_pipeline_0/SR[0]                                                                                       |               60 |            122 |         2.03 |
+|  sys_clk_IBUF_BUFG | ex_mem_pipeline0/mem_wb_Write                                                                       | power_on_reset_0/rst_n_reg_0[0]                                                                              |               63 |            143 |         2.27 |
++--------------------+-----------------------------------------------------------------------------------------------------+--------------------------------------------------------------------------------------------------------------+------------------+----------------+--------------+
+
+

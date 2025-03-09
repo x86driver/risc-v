@@ -5,7 +5,7 @@
 `include "wiredly.v"
 `include "ddr3_model.sv"
 
-parameter UART_ADDR_OFFSET = 32'h0000_0400;
+parameter UART_ADDR_OFFSET = 32'h0000_0700;
 
 module alu_control(
     input logic [1:0] aluop,
@@ -55,13 +55,48 @@ module instruction_memory(
     output logic [31:0] inst
 );
 
-    localparam INST_COUNT = 3;
+    localparam INST_COUNT = 14;
 
+/* ddr3 讀寫 + 迴圈 + 超過 UART_ADDR_OFFSET 會讓 x5 輸出 1 */
     logic [31:0] mem [INST_COUNT] = '{
-        32'h12300093, // addi x1, x0, 0x123
-        32'h00102023, // sw x1, 0(x0)
-        32'h01002103  // lw x2, 16(x0)
+        32'h000000b3, // add x1, x0, x0 // value
+        32'h00000133, // add x2, x0, x0 // address
+        32'h40000193, // addi x3, x0, 0x400 // counter
+        32'h000002b3, // add x5, x0, x0 // error-flag
+        32'h00112023, // .loop sw x1, (x2)
+        32'h00012203, // lw x4, (x2) // load the value
+        32'h00221c63, // bne x4, x2, .error
+        32'hfff18193, // addi x3, x3, -1 // counter - 1
+        32'h00408093, // addi x1, x1, 4 // value + 4
+        32'h00410113, // addi x2, x2, 4 // address + 4
+        32'hfe0194e3, // bne x3, x0, .loop
+        32'h00000063, // .exit beq x0, x0, .exit
+        32'h00100293, // .error addi x5, x0, 1
+        32'hfe000ee3  // beq x0, x0, .error
     };
+/* ddr3 讀寫測試 */
+/*
+    logic [31:0] mem [INST_COUNT] = '{
+        32'h12300093,
+        32'h00102023,
+        32'h45600093,
+        32'h00102223,
+        32'h78900093,
+        32'h00102423,
+        32'h11100093,
+        32'h00102623,
+        32'h22200093,
+        32'h00102823,
+        32'h33300093,
+        32'h00102a23,
+        32'h00002103,
+        32'h00402183,
+        32'h00802203,
+        32'h00c02283,
+        32'h01002303,
+        32'h01402383
+    };
+*/
 /* uart rx with interrupt */
 /*
     logic [31:0] mem [INST_COUNT] = '{
@@ -216,6 +251,104 @@ module data_memory(
     always_ff @(posedge clk) begin
         if (MemWrite) begin
             mem[address[31:2]] <= write_data;
+        end
+    end
+
+endmodule
+
+module data_memory_multicycle(
+    input logic clk,
+    input logic rst_n,
+    input logic MemRead,
+    input logic MemWrite,
+    input logic [31:0] address,
+    input logic [31:0] write_data,
+    output logic read_data_valid,
+    output logic [31:0] read_data,
+    output logic write_done,
+    input logic init_calib_complete
+);
+
+    typedef enum logic [3:0] {
+        IDLE           = 4'd0,  // 空閒狀態
+        WRITE_ADDR     = 4'd1,  // 發送寫地址
+        WRITE_DATA     = 4'd2,  // 發送寫數據
+        WRITE_RESP     = 4'd3,  // 等待寫響應
+        WRITE_DONE     = 4'd4,
+        READ_ADDR      = 4'd5,  // 發送讀地址
+        READ_DATA      = 4'd6,  // 接收讀數據
+        READ_DONE      = 4'd7
+    } state_t;
+
+    state_t state;  // 當前狀態
+
+    logic [31:0] mem [5] = {
+        32'hDEAD_BEEF,
+        32'h4444_4444,
+        32'h8888_8888,
+        32'hCCCC_CCCC,
+        32'h1010_1010
+    };
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            read_data <= 0;
+            read_data_valid <= 0;
+            write_done <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    read_data_valid <= 0;
+                    write_done <= 0;
+                    if (init_calib_complete) begin
+                        if (MemRead) begin
+                            state <= READ_ADDR;
+                        end else if (MemWrite) begin
+                            state <= WRITE_ADDR;
+                        end else begin
+                            state <= IDLE;
+                        end
+                    end
+                end
+
+                WRITE_ADDR: begin
+                    state <= WRITE_DATA;
+                end
+
+                WRITE_DATA: begin
+                    mem[address[31:2]] <= write_data;
+                    state <= WRITE_RESP;
+                end
+
+                WRITE_RESP: begin
+                    write_done <= 1;
+                    state <= WRITE_DONE;
+                end
+
+                WRITE_DONE: begin
+                    state <= IDLE;
+                end
+
+                READ_ADDR: begin
+                    state <= READ_DATA;
+                end
+
+                READ_DATA: begin
+                    read_data = mem[address[31:2]];
+                    read_data_valid <= 1;
+                    state <= IDLE;
+                end
+
+                READ_DONE: begin
+                    read_data_valid <= 0;
+                    state <= IDLE;
+                end
+
+                default: begin
+                    state <= IDLE;
+                end
+            endcase
         end
     end
 
@@ -983,6 +1116,7 @@ module riscv_cpu(
 `ifdef XILINX_SIMULATOR
     logic clk = 0;
     always #10000 clk = ~clk;
+    //always #10 clk = ~clk;
 `else
     wire clk = sys_clk;
 `endif
@@ -1382,6 +1516,21 @@ module riscv_cpu(
     //     .read_data(mem_memory_read_data)
     // );
 
+/*
+    data_memory_multicycle data_memory_multicycle_0(
+        .clk(clk),
+        .rst_n(rst_n),
+        .MemRead(mem_data_MemRead),
+        .MemWrite(mem_data_MemWrite),
+        .address(mem_alu_out),
+        .write_data(mem_read_data2),
+        .read_data_valid(mem_data_read_data_valid),
+        .read_data(mem_memory_read_data),
+        .write_done(mem_data_write_done),
+        .init_calib_complete(1'b1)
+    );
+*/
+
     uart uart_0(
         .clk(clk),
         .rst_n(rst_n),
@@ -1402,6 +1551,7 @@ module riscv_cpu(
         .B(mem_memory_read_data),
         .mux_out(mem_mux_read_data)
     );
+
 
     // DDR3
     parameter DQ_WIDTH              = 16;
@@ -1607,5 +1757,6 @@ module riscv_cpu(
         end
         end
     endgenerate
+
 
 endmodule

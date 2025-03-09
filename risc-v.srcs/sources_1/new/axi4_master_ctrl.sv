@@ -168,8 +168,24 @@ module axi4_master_ctrl #(
                 
                 WRITE_DATA: begin
                     // 設置寫數據通道信號
-                    s_axi_wdata <= {96'b0, write_data};          // 寫入 128 bits
-                    s_axi_wstrb <= 'hF;              // 最後4個bytes有效
+                    case (write_address[3:0])
+                        4'd0:  begin
+                            s_axi_wdata <= {96'b0, write_data};
+                            s_axi_wstrb <= 'h000F;
+                        end
+                        4'd4:  begin
+                            s_axi_wdata <= {64'b0, write_data, 32'b0};
+                            s_axi_wstrb <= 'h00F0;
+                        end
+                        4'd8:  begin
+                            s_axi_wdata <= {32'b0, write_data, 64'b0};
+                            s_axi_wstrb <= 'h0F00;
+                        end
+                        4'd12: begin
+                            s_axi_wdata <= {write_data, 96'b0};
+                            s_axi_wstrb <= 'hF000;
+                        end
+                    endcase
                     s_axi_wlast <= 1;                // 最後一個數據
                     s_axi_wvalid <= 1;               // 有效數據
                     
@@ -196,6 +212,7 @@ module axi4_master_ctrl #(
                 end
 
                 WRITE_DONE: begin
+                    write_done <= 0;
                     state <= IDLE;
                 end
 
@@ -228,7 +245,14 @@ module axi4_master_ctrl #(
                     // 等待握手完成並檢查響應
                     if (s_axi_rvalid && s_axi_rready) begin
                         if (s_axi_rresp == RESP_OKAY) begin
-                            read_data_out <= s_axi_rdata;   // 保存讀取的數據
+                            case (read_address[3:0])
+                                4'd0: read_data_out <= s_axi_rdata[31:0];
+                                4'd4: read_data_out <= s_axi_rdata[63:32];
+                                4'd8: read_data_out <= s_axi_rdata[95:64];
+                                4'd12: read_data_out <= s_axi_rdata[127:96];
+                                default: read_data_out <= 32'h0;
+                            endcase
+                            read_data_out <= s_axi_rdata >> {read_address[3:0], 3'b000};
                             read_data_valid <= 1;
                         end
                         
@@ -240,6 +264,7 @@ module axi4_master_ctrl #(
                 end
 
                 READ_DONE: begin
+                    read_data_valid <= 0;
                     state <= IDLE;
                 end
 

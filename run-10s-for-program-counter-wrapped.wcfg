@@ -14,13 +14,13 @@
       </db_ref>
    </db_ref_list>
    <zoom_setting>
-      <ZoomStartTime time="108,705.337877 ns"></ZoomStartTime>
-      <ZoomEndTime time="109,058.932425 ns"></ZoomEndTime>
-      <Cursor1Time time="109,000.000000 ns"></Cursor1Time>
+      <ZoomStartTime time="638,971.375000 ns"></ZoomStartTime>
+      <ZoomEndTime time="641,266.375001 ns"></ZoomEndTime>
+      <Cursor1Time time="640,883.875000 ns"></Cursor1Time>
    </zoom_setting>
    <column_width_setting>
       <NameColumnWidth column_width="276"></NameColumnWidth>
-      <ValueColumnWidth column_width="88"></ValueColumnWidth>
+      <ValueColumnWidth column_width="72"></ValueColumnWidth>
    </column_width_setting>
    <WVObjectSize size="30" />
    <wvobject type="logic" fp_name="/riscv_cpu/clk">
@@ -31,33 +31,29 @@
       <obj_property name="ElementShortName">rst_n</obj_property>
       <obj_property name="ObjectShortName">rst_n</obj_property>
    </wvobject>
-   <wvobject type="logic" fp_name="/riscv_cpu/btn_reset_n">
-      <obj_property name="ElementShortName">btn_reset_n</obj_property>
-      <obj_property name="ObjectShortName">btn_reset_n</obj_property>
-   </wvobject>
-   <wvobject type="logic" fp_name="/riscv_cpu/init_calib_complete">
-      <obj_property name="ElementShortName">init_calib_complete</obj_property>
-      <obj_property name="ObjectShortName">init_calib_complete</obj_property>
-   </wvobject>
    <wvobject type="array" fp_name="/riscv_cpu/ddr3_ram_0/u_axi4_master_ctrl/state">
       <obj_property name="ElementShortName">state[3:0]</obj_property>
       <obj_property name="ObjectShortName">state[3:0]</obj_property>
    </wvobject>
+   <wvobject type="logic" fp_name="/riscv_cpu/mem_data_read_data_valid">
+      <obj_property name="ElementShortName">mem_data_read_data_valid</obj_property>
+      <obj_property name="ObjectShortName">mem_data_read_data_valid</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/riscv_cpu/mem_data_write_done">
+      <obj_property name="ElementShortName">mem_data_write_done</obj_property>
+      <obj_property name="ObjectShortName">mem_data_write_done</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/riscv_cpu/mem_data_MemRead">
+      <obj_property name="ElementShortName">mem_data_MemRead</obj_property>
+      <obj_property name="ObjectShortName">mem_data_MemRead</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/riscv_cpu/mem_data_MemWrite">
+      <obj_property name="ElementShortName">mem_data_MemWrite</obj_property>
+      <obj_property name="ObjectShortName">mem_data_MemWrite</obj_property>
+   </wvobject>
    <wvobject type="array" fp_name="/riscv_cpu/mem_alu_out">
       <obj_property name="ElementShortName">mem_alu_out[31:0]</obj_property>
       <obj_property name="ObjectShortName">mem_alu_out[31:0]</obj_property>
-   </wvobject>
-   <wvobject type="array" fp_name="/riscv_cpu/ddr3_ram_0/u_axi4_master_ctrl/s_axi_awaddr">
-      <obj_property name="ElementShortName">s_axi_awaddr[27:0]</obj_property>
-      <obj_property name="ObjectShortName">s_axi_awaddr[27:0]</obj_property>
-   </wvobject>
-   <wvobject type="array" fp_name="/riscv_cpu/ddr3_ram_0/u_axi4_master_ctrl/s_axi_araddr">
-      <obj_property name="ElementShortName">s_axi_araddr[27:0]</obj_property>
-      <obj_property name="ObjectShortName">s_axi_araddr[27:0]</obj_property>
-   </wvobject>
-   <wvobject type="array" fp_name="/riscv_cpu/ddr3_ram_0/u_axi4_master_ctrl/s_axi_rdata">
-      <obj_property name="ElementShortName">s_axi_rdata[127:0]</obj_property>
-      <obj_property name="ObjectShortName">s_axi_rdata[127:0]</obj_property>
    </wvobject>
    <wvobject type="array" fp_name="/riscv_cpu/pc_current">
       <obj_property name="ElementShortName">pc_current[31:0]</obj_property>
@@ -83,9 +79,14 @@
       <obj_property name="ElementShortName">mem_inst[31:0]</obj_property>
       <obj_property name="ObjectShortName">mem_inst[31:0]</obj_property>
    </wvobject>
+   <wvobject type="array" fp_name="/riscv_cpu/ddr3_ram_0/u_axi4_master_ctrl/s_axi_rdata">
+      <obj_property name="ElementShortName">s_axi_rdata[127:0]</obj_property>
+      <obj_property name="ObjectShortName">s_axi_rdata[127:0]</obj_property>
+   </wvobject>
    <wvobject type="array" fp_name="/riscv_cpu/reg_file_0/registers">
       <obj_property name="ElementShortName">registers[0:31][31:0]</obj_property>
       <obj_property name="ObjectShortName">registers[0:31][31:0]</obj_property>
+      <obj_property name="isExpanded"></obj_property>
    </wvobject>
    <wvobject type="logic" fp_name="/riscv_cpu/stall_unit_0/mem_stall">
       <obj_property name="ElementShortName">mem_stall</obj_property>

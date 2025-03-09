@@ -17359,8 +17359,8 @@ const int NumRelocateId= 17299;
 void relocate(char *dp)
 {
 	iki_relocate(dp, "xsim.dir/riscv_cpu_behav/xsim.reloc",  (void **)funcTab, 17299);
-	iki_vhdl_file_variable_register(dp + 19774248);
-	iki_vhdl_file_variable_register(dp + 19774304);
+	iki_vhdl_file_variable_register(dp + 19774336);
+	iki_vhdl_file_variable_register(dp + 19774392);
 
 
 	/*Populate the transaction function pointer field in the whole net structure */
@@ -17377,31 +17377,31 @@ void wrapper_func_0(char *dp)
 
 {
 
-	iki_vlog_schedule_transaction_signal_fast_vhdl_value_time_0(dp + 19846416, dp + 19787080, 0, 0, 0, 0, 1, 1);
+	iki_vlog_schedule_transaction_signal_fast_vhdl_value_time_0(dp + 19846504, dp + 19787168, 0, 0, 0, 0, 1, 1);
 
-	iki_vlog_schedule_transaction_signal_fast_vhdl_value_time_0(dp + 19845616, dp + 19841824, 0, 0, 0, 0, 1, 1);
+	iki_vlog_schedule_transaction_signal_fast_vhdl_value_time_0(dp + 19845704, dp + 19841912, 0, 0, 0, 0, 1, 1);
 
-	iki_vlog_schedule_transaction_signal_fast_vhdl_value_time_0(dp + 19845808, dp + 19842048, 0, 0, 0, 0, 1, 1);
+	iki_vlog_schedule_transaction_signal_fast_vhdl_value_time_0(dp + 19845896, dp + 19842136, 0, 0, 0, 0, 1, 1);
 
-	iki_vlog_schedule_transaction_signal_fast_vhdl_value_time_0(dp + 19845864, dp + 19842104, 0, 1, 0, 1, 2, 1);
+	iki_vlog_schedule_transaction_signal_fast_vhdl_value_time_0(dp + 19845952, dp + 19842192, 0, 1, 0, 1, 2, 1);
 
-	iki_vlog_schedule_transaction_signal_fast_vhdl_value_time_0(dp + 19845904, dp + 19842160, 0, 0, 0, 0, 1, 1);
+	iki_vlog_schedule_transaction_signal_fast_vhdl_value_time_0(dp + 19845992, dp + 19842248, 0, 0, 0, 0, 1, 1);
 
-	iki_vlog_schedule_transaction_signal_fast_vhdl_value_time_0(dp + 19846112, dp + 19842384, 0, 0, 0, 0, 1, 1);
+	iki_vlog_schedule_transaction_signal_fast_vhdl_value_time_0(dp + 19846200, dp + 19842472, 0, 0, 0, 0, 1, 1);
 
-	iki_vlog_schedule_transaction_signal_fast_vhdl_value_time_0(dp + 19846168, dp + 19842440, 0, 31, 0, 31, 32, 1);
+	iki_vlog_schedule_transaction_signal_fast_vhdl_value_time_0(dp + 19846256, dp + 19842528, 0, 31, 0, 31, 32, 1);
 
-	iki_vlog_schedule_transaction_signal_fast_vhdl_value_time_0(dp + 19846208, dp + 19842496, 0, 1, 0, 1, 2, 1);
+	iki_vlog_schedule_transaction_signal_fast_vhdl_value_time_0(dp + 19846296, dp + 19842584, 0, 1, 0, 1, 2, 1);
 
-	iki_vlog_schedule_transaction_signal_fast_vhdl_value_time_0(dp + 19846248, dp + 19842552, 0, 0, 0, 0, 1, 1);
+	iki_vlog_schedule_transaction_signal_fast_vhdl_value_time_0(dp + 19846336, dp + 19842640, 0, 0, 0, 0, 1, 1);
 
-	iki_vlog_schedule_transaction_signal_fast_vhdl_value_time_0(dp + 19845464, dp + 19842664, 0, 0, 0, 0, 1, 1);
+	iki_vlog_schedule_transaction_signal_fast_vhdl_value_time_0(dp + 19845552, dp + 19842752, 0, 0, 0, 0, 1, 1);
 
 }
 
 void simulate(char *dp)
 {
-iki_register_root_pointers(8, 17113576, -7,0,17114272, -7,0,17114968, -7,0,17115664, -7,0,17116360, -7,0,17117056, -7,0,17117752, -7,0,17118448, -7,0) ; 
+iki_register_root_pointers(8, 17113664, -7,0,17114360, -7,0,17115056, -7,0,17115752, -7,0,17116448, -7,0,17117144, -7,0,17117840, -7,0,17118536, -7,0) ; 
 		iki_schedule_processes_at_time_zero(dp, "xsim.dir/riscv_cpu_behav/xsim.reloc");
 	wrapper_func_0(dp);
 

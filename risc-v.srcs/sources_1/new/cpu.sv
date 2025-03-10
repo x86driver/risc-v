@@ -6,6 +6,11 @@
 `include "ddr3_model.sv"
 
 parameter UART_ADDR_OFFSET = 32'h0000_0700;
+parameter LEDS_ADDR_OFFSET = 32'h0000_0710;
+
+parameter SEL_RAM  = 2'd0;
+parameter SEL_UART = 2'd1;
+parameter SEL_LEDS = 2'd2;
 
 module alu_control(
     input logic [1:0] aluop,
@@ -55,9 +60,18 @@ module instruction_memory(
     output logic [31:0] inst
 );
 
-    localparam INST_COUNT = 14;
+    localparam INST_COUNT = 4;
+
+/* leds 輸出 0x41 */
+    logic [31:0] mem [INST_COUNT] = '{
+        32'h71000093, // addi x1, x0, 0x710
+        32'h04100113, // addi x2, x0, 0x41
+        32'h0020a023, // sw x2, (x1)
+        32'h0000a183  // lw x3, (x1)
+    };
 
 /* ddr3 讀寫 + 迴圈 + 超過 UART_ADDR_OFFSET 會讓 x5 輸出 1 */
+/*
     logic [31:0] mem [INST_COUNT] = '{
         32'h000000b3, // add x1, x0, x0 // value
         32'h00000133, // add x2, x0, x0 // address
@@ -74,6 +88,7 @@ module instruction_memory(
         32'h00100293, // .error addi x5, x0, 1
         32'hfe000ee3  // beq x0, x0, .error
     };
+*/
 /* ddr3 讀寫測試 */
 /*
     logic [31:0] mem [INST_COUNT] = '{
@@ -124,7 +139,7 @@ module instruction_memory(
 /* 送 16 次 tx */
 /*
     logic [31:0] mem [0:INST_COUNT-1] = '{
-        32'h40000093, // addi x1, x0, 0x400
+        32'h70000093, // addi x1, x0, 0x700
         32'h05500113, // addi x2, x0, 0x55
         32'h01000193, // li x3, 16
         32'h0020a223, // _SEND: sw x2, 4(x1)
@@ -358,25 +373,23 @@ module address_decoder(
     input logic [31:0] address,
     input logic mem_MemRead,
     input logic mem_MemWrite,
-    output logic mem_data_MemRead,
-    output logic mem_data_MemWrite,
-    output logic mem_uart_MemRead,
-    output logic mem_uart_MemWrite
+    output logic [1:0] sel,
+    output logic memRead_en,
+    output logic memWrite_en
 );
 
     always_comb begin
-        if (address < UART_ADDR_OFFSET) begin : RAM
-            mem_data_MemRead = mem_MemRead;
-            mem_data_MemWrite = mem_MemWrite;
-            mem_uart_MemRead = 1'b0;
-            mem_uart_MemWrite = 1'b0;
-        end else begin : UART
-            mem_data_MemRead = 1'b0;
-            mem_data_MemWrite = 1'b0;
-            mem_uart_MemRead = mem_MemRead;
-            mem_uart_MemWrite = mem_MemWrite;
+        if (address < UART_ADDR_OFFSET) begin
+            sel = SEL_RAM;
+        end else if (address < LEDS_ADDR_OFFSET) begin
+            sel = SEL_UART;
+        end else begin
+            sel = SEL_LEDS;
         end
     end
+
+    assign memRead_en  = mem_MemRead;
+    assign memWrite_en = mem_MemWrite;
 
 endmodule
 
@@ -1103,11 +1116,45 @@ module power_on_reset(
 
 endmodule
 
+module leds_ctrl(
+    input logic clk,
+    input logic rst_n,
+    input logic MemRead,
+    input logic MemWrite,
+    input logic [31:0] write_data,
+    output logic [31:0] read_data,
+    output logic [7:0] leds
+);
+
+    logic [7:0] leds_reg = 8'h0;
+
+    always_comb begin
+        read_data = 32'h0;
+        if (MemRead) begin
+            read_data = {24'b0, leds_reg};
+        end else begin
+            read_data = 32'h0;
+        end
+    end
+
+    always_ff @(posedge clk) begin
+        if (!rst_n) begin
+            leds_reg <= 8'h0;
+        end else if (MemWrite) begin
+            leds_reg <= write_data[7:0];
+        end
+    end
+
+    assign leds = leds_reg;
+
+endmodule
+
 module riscv_cpu(
     input logic sys_clk,
     input logic btn_reset_n,
 //    input logic uart_rx,
-    output wire uart_tx
+    output wire uart_tx,
+    output logic [7:0] leds
 );
 
     logic uart_rx = 1;
@@ -1235,6 +1282,9 @@ module riscv_cpu(
     wire [31:0] wb_alu_out;
     wire [4:0] wb_rd;
 
+    wire [1:0] address_sel;
+    wire memRead_en;
+    wire memWrite_en;
     wire mem_data_MemRead;
     wire mem_data_MemWrite;
     wire mem_data_read_data_valid;
@@ -1243,8 +1293,11 @@ module riscv_cpu(
     wire mem_uart_MemWrite;
     wire mem_uart_read_data_valid;
     wire mem_uart_write_done;
+    wire mem_leds_MemRead;
+    wire mem_leds_MemWrite;
     wire [31:0] mem_memory_read_data;
     wire [31:0] mem_uart_read_data;
+    wire [31:0] mem_leds_read_data;
     wire [31:0] mem_mux_read_data;
 
     wire [31:0] wb_reg_write_data;
@@ -1501,10 +1554,9 @@ module riscv_cpu(
         .address(mem_alu_out),
         .mem_MemRead(mem_MemRead),
         .mem_MemWrite(mem_MemWrite),
-        .mem_data_MemRead(mem_data_MemRead),
-        .mem_data_MemWrite(mem_data_MemWrite),
-        .mem_uart_MemRead(mem_uart_MemRead),
-        .mem_uart_MemWrite(mem_uart_MemWrite)
+        .sel(address_sel),
+        .memRead_en(memRead_en),
+        .memWrite_en(memWrite_en)
     );
 
     // data_memory data_memory_0(
@@ -1531,6 +1583,8 @@ module riscv_cpu(
     );
 */
 
+    assign mem_uart_MemRead = memRead_en && address_sel == SEL_UART;
+    assign mem_uart_MemWrite = memWrite_en && address_sel == SEL_UART;
     uart uart_0(
         .clk(clk),
         .rst_n(rst_n),
@@ -1545,10 +1599,23 @@ module riscv_cpu(
         .rx(uart_rx)
     );
 
-    mux2to1 mux2to1_mem_uart(
-        .sel(mem_data_MemRead),
-        .A(mem_uart_read_data),
-        .B(mem_memory_read_data),
+    assign mem_leds_MemRead = memRead_en && address_sel == SEL_LEDS;
+    assign mem_leds_MemWrite = memWrite_en && address_sel == SEL_LEDS;
+    leds_ctrl leds_ctrl_0(
+        .clk(clk),
+        .rst_n(rst_n),
+        .MemRead(mem_leds_MemRead),
+        .MemWrite(mem_leds_MemWrite),
+        .write_data(mem_read_data2),
+        .read_data(mem_leds_read_data),
+        .leds(leds)
+    );
+
+    mux3to1 mux3to1_mem_address(
+        .sel(address_sel),
+        .A(mem_memory_read_data),
+        .B(mem_uart_read_data),
+        .C(mem_leds_read_data),
         .mux_out(mem_mux_read_data)
     );
 
@@ -1606,6 +1673,8 @@ module riscv_cpu(
     reg [1-1:0]                        ddr3_ck_p_sdram;
     reg [1-1:0]                        ddr3_ck_n_sdram;
 
+    assign mem_data_MemRead = memRead_en && address_sel == SEL_RAM;
+    assign mem_data_MemWrite = memWrite_en && address_sel == SEL_RAM;
     ddr3_ram ddr3_ram_0(
         .clk(clk),
         .rst_n(rst_n),

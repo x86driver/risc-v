@@ -23,10 +23,11 @@ module alu_control(
         casez ({aluop, isSub, funct3})
             6'b00_?_???: alu_ctrl = 4'b0010; // lw, sw
             6'b01_?_???: alu_ctrl = 4'b0110; // beq
-            6'b1?_0_000: alu_ctrl = 4'b0010; // add
-            6'b1?_1_000: alu_ctrl = 4'b0110; // sub
-            6'b1?_0_111: alu_ctrl = 4'b0000; // and
-            6'b1?_0_110: alu_ctrl = 4'b0001; // or
+            6'b10_0_000: alu_ctrl = 4'b0010; // add
+            6'b10_1_000: alu_ctrl = 4'b0110; // sub
+            6'b10_0_111: alu_ctrl = 4'b0000; // and
+            6'b10_0_110: alu_ctrl = 4'b0001; // or
+            6'b11_?_???: alu_ctrl = 4'b0111; // imm << 12
             default:   alu_ctrl = 4'b0000;
         endcase
     end
@@ -49,6 +50,7 @@ module alu(
             1: alu_out = A | B;
             2: alu_out = A + B;
             6: alu_out = A - B;
+            7: alu_out = 32'({B[19:0], 12'b0});
             default: alu_out = 0;
         endcase
     end
@@ -60,16 +62,28 @@ module instruction_memory(
     output logic [31:0] inst
 );
 
-    localparam INST_COUNT = 4;
+    localparam INST_COUNT = 5;
 
-/* leds 輸出 0x41 */
+/* 每次加 1, 總計 0x90000 次 */
+    logic [31:0] mem [INST_COUNT] = '{
+        32'h00000133, // add x2, x0, x0
+        32'h000090b7, // lui x1, 0x9
+        32'h00110113, // .L1: addi x2, x2, 1
+        32'hfff08093, // addi x1, x1, -1
+        32'hfe009ce3  // bne x1, x0, .L1
+    };
+
+/* leds 輸出 0x41, 存到 0x0, 再讀出來 */
+/*
     logic [31:0] mem [INST_COUNT] = '{
         32'h71000093, // addi x1, x0, 0x710
         32'h04100113, // addi x2, x0, 0x41
         32'h0020a023, // sw x2, (x1)
-        32'h0000a183  // lw x3, (x1)
+        32'h0000a183, // lw x3, (x1)
+        32'h00302023, // sw x3, (x0)
+        32'h00002203  // lw x4, (x0)
     };
-
+*/
 /* ddr3 讀寫 + 迴圈 + 超過 UART_ADDR_OFFSET 會讓 x5 輸出 1 */
 /*
     logic [31:0] mem [INST_COUNT] = '{
@@ -496,6 +510,17 @@ module control_unit(
                 isSub = 1;
                 isValid = 1;
             end
+            7'b0110111: begin // lui
+                ALUSrc = 1;
+                MemtoReg = 0;
+                RegWrite = 1;
+                MemRead = 0;
+                MemWrite = 0;
+                Branch = 0;
+                ALUOp = 2'b11;
+                isSub = 0;
+                isValid = 1;
+            end
             default: begin
                 ALUSrc = 0;
                 MemtoReg = 0;
@@ -550,6 +575,8 @@ module imm32_gen(
                 imm32 = {{20{inst[31]}}, inst[31:25], inst[11:7]};
             7'b1100011: // Branch
                 imm32 = {{19{inst[31]}}, inst[31], inst[7], inst[30:25], inst[11:8], 1'b0};
+            7'b0110111: // lui
+                imm32 = {12'b0, inst[31:12]};
             default:
                 imm32 = 32'h0;
         endcase

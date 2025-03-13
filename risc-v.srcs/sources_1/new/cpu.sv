@@ -27,7 +27,6 @@ module alu_control(
             6'b10_1_000: alu_ctrl = 4'b0110; // sub
             6'b10_0_111: alu_ctrl = 4'b0000; // and
             6'b10_0_110: alu_ctrl = 4'b0001; // or
-            6'b11_?_???: alu_ctrl = 4'b0111; // imm << 12
             default:   alu_ctrl = 4'b0000;
         endcase
     end
@@ -50,7 +49,6 @@ module alu(
             1: alu_out = A | B;
             2: alu_out = A + B;
             6: alu_out = A - B;
-            7: alu_out = 32'({B[19:0], 12'b0});
             default: alu_out = 0;
         endcase
     end
@@ -62,9 +60,18 @@ module instruction_memory(
     output logic [31:0] inst
 );
 
-    localparam INST_COUNT = 5;
+    localparam INST_COUNT = 3;
+
+/* 測試 lui 和 auipc */
+
+    logic [31:0] mem [INST_COUNT] = '{
+        32'h0000f0b7, // lui x1, 0xf
+        32'h00002117, // auipc x2, 0x2
+        32'h00000013  // nop
+    };
 
 /* 每次加 1, 總計 0x90000 次 */
+/*
     logic [31:0] mem [INST_COUNT] = '{
         32'h00000133, // add x2, x0, x0
         32'h000090b7, // lui x1, 0x9
@@ -72,7 +79,7 @@ module instruction_memory(
         32'hfff08093, // addi x1, x1, -1
         32'hfe009ce3  // bne x1, x0, .L1
     };
-
+*/
 /* leds 輸出 0x41, 存到 0x0, 再讀出來 */
 /*
     logic [31:0] mem [INST_COUNT] = '{
@@ -443,6 +450,7 @@ endmodule
 module control_unit(
     input logic [31:0] inst,
     output logic ALUSrc,
+    output logic [1:0] ALUSrcA_sel,
     output logic MemtoReg,
     output logic RegWrite,
     output logic MemRead,
@@ -457,6 +465,7 @@ module control_unit(
         casez (inst[6:0])
             7'b0110011: begin // R-format
                 ALUSrc = 0;
+                ALUSrcA_sel = 2'b00;
                 MemtoReg = 0;
                 RegWrite = 1;
                 MemRead = 0;
@@ -468,6 +477,7 @@ module control_unit(
             end
             7'b0010011: begin // I-format
                 ALUSrc = 1;
+                ALUSrcA_sel = 2'b00;
                 MemtoReg = 0;
                 RegWrite = 1;
                 MemRead = 0;
@@ -479,6 +489,7 @@ module control_unit(
             end
             7'b0000011: begin // lw
                 ALUSrc = 1;
+                ALUSrcA_sel = 2'b00;
                 MemtoReg = 1;
                 RegWrite = 1;
                 MemRead = 1;
@@ -490,6 +501,7 @@ module control_unit(
             end
             7'b0100011: begin // sw
                 ALUSrc = 1;
+                ALUSrcA_sel = 2'b00;
                 MemtoReg = 0;
                 RegWrite = 0;
                 MemRead = 0;
@@ -501,6 +513,7 @@ module control_unit(
             end
             7'b1100011: begin // beq
                 ALUSrc = 0;
+                ALUSrcA_sel = 2'b00;
                 MemtoReg = 0;
                 RegWrite = 0;
                 MemRead = 0;
@@ -512,17 +525,31 @@ module control_unit(
             end
             7'b0110111: begin // lui
                 ALUSrc = 1;
+                ALUSrcA_sel = 2'b10;
                 MemtoReg = 0;
                 RegWrite = 1;
                 MemRead = 0;
                 MemWrite = 0;
                 Branch = 0;
-                ALUOp = 2'b11;
+                ALUOp = 2'b00; // use add
+                isSub = 0;
+                isValid = 1;
+            end
+            7'b0010111: begin // auipc
+                ALUSrc = 1;
+                ALUSrcA_sel = 2'b01;
+                MemtoReg = 0;
+                RegWrite = 1;
+                MemRead = 0;
+                MemWrite = 0;
+                Branch = 0;
+                ALUOp = 2'b00; // use add
                 isSub = 0;
                 isValid = 1;
             end
             default: begin
                 ALUSrc = 0;
+                ALUSrcA_sel = 2'b00;
                 MemtoReg = 0;
                 RegWrite = 0;
                 MemRead = 0;
@@ -575,8 +602,9 @@ module imm32_gen(
                 imm32 = {{20{inst[31]}}, inst[31:25], inst[11:7]};
             7'b1100011: // Branch
                 imm32 = {{19{inst[31]}}, inst[31], inst[7], inst[30:25], inst[11:8], 1'b0};
-            7'b0110111: // lui
-                imm32 = {12'b0, inst[31:12]};
+            7'b0110111, // lui
+            7'b0010111: // auipc
+                imm32 = {inst[31:12], 12'b0};
             default:
                 imm32 = 32'h0;
         endcase
@@ -682,6 +710,7 @@ module id_ex_pipeline(
     input logic id_Flush,
 
     input logic id_ALUSrc,
+    input logic [1:0] id_ALUSrcA_sel,
     input logic id_MemtoReg,
     input logic id_RegWrite,
     input logic id_MemRead,
@@ -700,6 +729,7 @@ module id_ex_pipeline(
     input logic [4:0] id_rd,
 
     output logic ex_ALUSrc,
+    output logic [1:0] ex_ALUSrcA_sel,
     output logic ex_MemtoReg,
     output logic ex_RegWrite,
     output logic ex_MemRead,
@@ -721,6 +751,7 @@ module id_ex_pipeline(
     always_ff @(posedge clk) begin
         if (!rst_n) begin
             ex_ALUSrc <= 0;
+            ex_ALUSrcA_sel <= 0;
             ex_MemtoReg <= 0;
             ex_RegWrite <= 0;
             ex_MemRead <= 0;
@@ -739,6 +770,7 @@ module id_ex_pipeline(
             ex_rd <= 0;
         end else if (id_Flush) begin
             ex_ALUSrc <= 0;
+            ex_ALUSrcA_sel <= 0;
             ex_MemtoReg <= 0;
             ex_RegWrite <= 0;
             ex_MemRead <= 0;
@@ -757,6 +789,7 @@ module id_ex_pipeline(
             ex_rd <= 0;
         end else if (id_ex_Write) begin
             ex_ALUSrc <= id_ALUSrc;
+            ex_ALUSrcA_sel <= id_ALUSrcA_sel;
             ex_MemtoReg <= id_MemtoReg;
             ex_RegWrite <= id_RegWrite;
             ex_MemRead <= id_MemRead;
@@ -1247,6 +1280,7 @@ module riscv_cpu(
     wire [31:0] ex_imm32;
 
     wire id_ALUSrc;
+    wire [1:0] id_ALUSrcA_sel;
     wire id_MemtoReg;
     wire id_RegWrite;
     wire id_MemRead;
@@ -1260,6 +1294,7 @@ module riscv_cpu(
     wire mux_id_RegWrite;
 
     wire ex_ALUSrc;
+    wire [1:0] ex_ALUSrcA_sel;
     wire ex_MemtoReg;
     wire ex_RegWrite;
     wire ex_MemRead;
@@ -1278,6 +1313,7 @@ module riscv_cpu(
     wire [1:0] ForwardB;
     wire [31:0] mux3to1_alu_a_out;
     wire [31:0] mux3to1_alu_b_out;
+    wire [31:0] mux3to1_alu_a_operand_out;
 
     wire mem_MemtoReg;
     wire mem_RegWrite;
@@ -1412,6 +1448,7 @@ module riscv_cpu(
         .id_Flush(id_Flush),
 
         .id_ALUSrc(id_ALUSrc),
+        .id_ALUSrcA_sel(id_ALUSrcA_sel),
         .id_MemtoReg(id_MemtoReg),
         .id_RegWrite(mux_id_RegWrite),
         .id_MemRead(id_MemRead),
@@ -1430,6 +1467,7 @@ module riscv_cpu(
         .id_rd(id_inst[11:7]),
 
         .ex_ALUSrc(ex_ALUSrc),
+        .ex_ALUSrcA_sel(ex_ALUSrcA_sel),
         .ex_MemtoReg(ex_MemtoReg),
         .ex_RegWrite(ex_RegWrite),
         .ex_MemRead(ex_MemRead),
@@ -1500,6 +1538,7 @@ module riscv_cpu(
     control_unit controL_unit_0(
         .inst(id_inst),
         .ALUSrc(id_ALUSrc),
+        .ALUSrcA_sel(id_ALUSrcA_sel),
         .MemtoReg(id_MemtoReg),
         .RegWrite(id_RegWrite),
         .MemRead(id_MemRead),
@@ -1544,6 +1583,14 @@ module riscv_cpu(
         .mux_out(mux3to1_alu_b_out)
     );
 
+    mux3to1 mux3to1_alu_a_operand(
+        .sel(ex_ALUSrcA_sel),
+        .A(mux3to1_alu_a_out),
+        .B(ex_pc),
+        .C(32'h0),
+        .mux_out(mux3to1_alu_a_operand_out)
+    );
+
     mux2to1 mux2to1_alu(
         .sel(ex_ALUSrc),
         .A(mux3to1_alu_b_out),
@@ -1553,7 +1600,7 @@ module riscv_cpu(
 
     alu alu_0(
         .alu_ctrl(alu_ctrl),
-        .A(mux3to1_alu_a_out),
+        .A(mux3to1_alu_a_operand_out),
         .B(mux_alu_out),
         .alu_out(ex_alu_out),
         .zero(ex_Zero)

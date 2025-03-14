@@ -62,7 +62,7 @@ module instruction_memory(
     output logic [31:0] inst
 );
 
-    localparam INST_COUNT = 16;
+    localparam INST_COUNT = 18;
 
 /* 測試 lui 和 auipc */
 /*
@@ -93,25 +93,28 @@ module instruction_memory(
         32'h00002203  // lw x4, (x0)
     };
 */
-/* ddr3 讀寫 + 迴圈 + 超過 UART_ADDR_OFFSET 會讓 leds 輸出 1 */
+/* ddr3 讀寫 + 迴圈, 測試正確會讓 leds 輸出 0x1 */
+/* 超過 UART_ADDR_OFFSET 會讓 leds 輸出 0x1 + 0x2 = 0x3 */
 
     logic [31:0] mem [INST_COUNT] = '{
         32'h000000b3, // add x1, x0, x0 // value
         32'h00000133, // add x2, x0, x0 // address
         32'h40000193, // addi x3, x0, 0x400 // counter
-        32'h000002b3, // add x5, x0, x0 // error-flag
-        32'h00112023, // .loop sw x1, (x2)
+        32'h71000293, // addi x5, x0, 0x710 // leds base
+        32'h00100313, // addi x6, x0, 1 // led indicator
+        32'h00112023, // .loop: sw x1, (x2)
         32'h00012203, // lw x4, (x2) // load the value
-        32'h00221c63, // bne x4, x2, .error
+        32'h00221e63, // bne x4, x2, .error
+        32'h0062a023, // sw x6, (x5)
         32'hfff18193, // addi x3, x3, -1 // counter - 1
         32'h00408093, // addi x1, x1, 4 // value + 4
         32'h00410113, // addi x2, x2, 4 // address + 4
-        32'hfe0194e3, // bne x3, x0, .loop
-        32'h00000063, // .exit beq x0, x0, .exit
-        32'h71000293, // .error addi x5, x0, 0x710
-        32'h00100313, // addi x6, x0, 0x1
+        32'hfe0192e3, // bne x3, x0, .loop
+        32'h00000063, // .exit: beq x0, x0, .exit
+        32'h71000293, // .error: addi x5, x0, 0x710
+        32'h00230313, // addi x6, x6, 0x2
         32'h0062a023, // sw x6, (x5)
-        32'hfe000ae3  // beq x0, x0, .error
+        32'h00000063  // _error_end: beq x0, x0, ._error_end
     };
 
 /* ddr3 讀寫測試 */

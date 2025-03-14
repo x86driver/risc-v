@@ -2,8 +2,8 @@
 // Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
 // --------------------------------------------------------------------------------
 // Tool Version: Vivado v.2024.2 (lin64) Build 5239630 Fri Nov 08 22:34:34 MST 2024
-// Date        : Fri Mar  7 13:21:04 2025
-// Host        : 1b75cfe8b031 running 64-bit unknown
+// Date        : Fri Mar 14 13:16:17 2025
+// Host        : c6b9129c23d6 running 64-bit unknown
 // Command     : write_verilog -force -mode funcsim
 //               /pro/fpga/risc-v/risc-v.gen/sources_1/ip/clk_wiz_0/clk_wiz_0_sim_netlist.v
 // Design      : clk_wiz_0
@@ -16,32 +16,38 @@
 (* NotValidForBitStream *)
 module clk_wiz_0
    (clk_out1,
+    clk_out2,
     resetn,
     locked,
     clk_in1);
   output clk_out1;
+  output clk_out2;
   input resetn;
   output locked;
   input clk_in1;
 
   (* IBUF_LOW_PWR *) wire clk_in1;
   wire clk_out1;
+  wire clk_out2;
   wire locked;
   wire resetn;
 
   clk_wiz_0_clk_wiz inst
        (.clk_in1(clk_in1),
         .clk_out1(clk_out1),
+        .clk_out2(clk_out2),
         .locked(locked),
         .resetn(resetn));
 endmodule
 
 module clk_wiz_0_clk_wiz
    (clk_out1,
+    clk_out2,
     resetn,
     locked,
     clk_in1);
   output clk_out1;
+  output clk_out2;
   input resetn;
   output locked;
   input clk_in1;
@@ -50,12 +56,13 @@ module clk_wiz_0_clk_wiz
   wire clk_in1_clk_wiz_0;
   wire clk_out1;
   wire clk_out1_clk_wiz_0;
+  wire clk_out2;
+  wire clk_out2_clk_wiz_0;
   wire clkfbout_buf_clk_wiz_0;
   wire clkfbout_clk_wiz_0;
   wire locked;
   wire reset_high;
   wire resetn;
-  wire NLW_plle2_adv_inst_CLKOUT1_UNCONNECTED;
   wire NLW_plle2_adv_inst_CLKOUT2_UNCONNECTED;
   wire NLW_plle2_adv_inst_CLKOUT3_UNCONNECTED;
   wire NLW_plle2_adv_inst_CLKOUT4_UNCONNECTED;
@@ -81,6 +88,10 @@ module clk_wiz_0_clk_wiz
        (.I(clk_out1_clk_wiz_0),
         .O(clk_out1));
   (* BOX_TYPE = "PRIMITIVE" *) 
+  BUFG clkout2_buf
+       (.I(clk_out2_clk_wiz_0),
+        .O(clk_out2));
+  (* BOX_TYPE = "PRIMITIVE" *) 
   PLLE2_ADV #(
     .BANDWIDTH("OPTIMIZED"),
     .CLKFBOUT_MULT(20),
@@ -90,7 +101,7 @@ module clk_wiz_0_clk_wiz
     .CLKOUT0_DIVIDE(5),
     .CLKOUT0_DUTY_CYCLE(0.500000),
     .CLKOUT0_PHASE(0.000000),
-    .CLKOUT1_DIVIDE(1),
+    .CLKOUT1_DIVIDE(20),
     .CLKOUT1_DUTY_CYCLE(0.500000),
     .CLKOUT1_PHASE(0.000000),
     .CLKOUT2_DIVIDE(1),
@@ -120,7 +131,7 @@ module clk_wiz_0_clk_wiz
         .CLKIN2(1'b0),
         .CLKINSEL(1'b1),
         .CLKOUT0(clk_out1_clk_wiz_0),
-        .CLKOUT1(NLW_plle2_adv_inst_CLKOUT1_UNCONNECTED),
+        .CLKOUT1(clk_out2_clk_wiz_0),
         .CLKOUT2(NLW_plle2_adv_inst_CLKOUT2_UNCONNECTED),
         .CLKOUT3(NLW_plle2_adv_inst_CLKOUT3_UNCONNECTED),
         .CLKOUT4(NLW_plle2_adv_inst_CLKOUT4_UNCONNECTED),

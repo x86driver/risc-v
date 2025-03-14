@@ -56,7 +56,14 @@ if {$::dispatch::connected} {
 }
 
 OPTRACE "clk_wiz_0_synth_1" START { ROLLUP_AUTO }
+set_param checkpoint.writeSynthRtdsInDcp 1
+set_param chipscope.maxJobs 4
+set_param synth.incrementalSynthesisCache ./.Xil/Vivado-48-c6b9129c23d6/incrSyn
 set_msg_config -id {Common 17-41} -limit 10000000
+set_msg_config -id {HDL 9-1061} -limit 100000
+set_msg_config -id {HDL 9-1654} -limit 100000
+set_msg_config -id {Synth 8-256} -limit 10000
+set_msg_config -id {Synth 8-638} -limit 10000
 set_param project.vivado.isBlockSynthRun true
 set_msg_config -msgmgr_mode ooc_run
 OPTRACE "Creating in-memory project" START { }
@@ -68,7 +75,7 @@ set_param synth.vivado.isSynthRun true
 set_msg_config -source 4 -id {IP_Flow 19-2162} -severity warning -new_severity info
 set_property webtalk.parent_dir /pro/fpga/risc-v/risc-v.cache/wt [current_project]
 set_property parent.project_path /pro/fpga/risc-v/risc-v.xpr [current_project]
-set_property XPM_LIBRARIES XPM_CDC [current_project]
+set_property XPM_LIBRARIES {XPM_CDC XPM_MEMORY} [current_project]
 set_property default_lib xil_defaultlib [current_project]
 set_property target_language Verilog [current_project]
 set_property ip_output_repo /pro/fpga/risc-v/risc-v.cache/ip [current_project]

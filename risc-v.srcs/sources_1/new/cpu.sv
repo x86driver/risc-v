@@ -2,8 +2,10 @@
 // Create Date: 01/20/2025 01:31:56 PM
 
 `include "uart.sv"
+`ifdef XILINX_SIMULATOR
 `include "wiredly.v"
 `include "ddr3_model.sv"
+`endif
 
 parameter UART_ADDR_OFFSET = 32'h0000_0700;
 parameter LEDS_ADDR_OFFSET = 32'h0000_0710;
@@ -60,16 +62,16 @@ module instruction_memory(
     output logic [31:0] inst
 );
 
-    localparam INST_COUNT = 3;
+    localparam INST_COUNT = 16;
 
 /* 測試 lui 和 auipc */
-
+/*
     logic [31:0] mem [INST_COUNT] = '{
         32'h0000f0b7, // lui x1, 0xf
         32'h00002117, // auipc x2, 0x2
         32'h00000013  // nop
     };
-
+*/
 /* 每次加 1, 總計 0x90000 次 */
 /*
     logic [31:0] mem [INST_COUNT] = '{
@@ -91,8 +93,8 @@ module instruction_memory(
         32'h00002203  // lw x4, (x0)
     };
 */
-/* ddr3 讀寫 + 迴圈 + 超過 UART_ADDR_OFFSET 會讓 x5 輸出 1 */
-/*
+/* ddr3 讀寫 + 迴圈 + 超過 UART_ADDR_OFFSET 會讓 leds 輸出 1 */
+
     logic [31:0] mem [INST_COUNT] = '{
         32'h000000b3, // add x1, x0, x0 // value
         32'h00000133, // add x2, x0, x0 // address
@@ -106,10 +108,12 @@ module instruction_memory(
         32'h00410113, // addi x2, x2, 4 // address + 4
         32'hfe0194e3, // bne x3, x0, .loop
         32'h00000063, // .exit beq x0, x0, .exit
-        32'h00100293, // .error addi x5, x0, 1
-        32'hfe000ee3  // beq x0, x0, .error
+        32'h71000293, // .error addi x5, x0, 0x710
+        32'h00100313, // addi x6, x0, 0x1
+        32'h0062a023, // sw x6, (x5)
+        32'hfe000ae3  // beq x0, x0, .error
     };
-*/
+
 /* ddr3 讀寫測試 */
 /*
     logic [31:0] mem [INST_COUNT] = '{
@@ -1210,8 +1214,27 @@ module leds_ctrl(
 endmodule
 
 module riscv_cpu(
-    input logic sys_clk,
+`ifndef XILINX_SIMULATOR
+    input sys_clk_i,
+`endif
     input logic btn_reset_n,
+`ifndef XILINX_SIMULATOR
+    inout [15:0]    ddr3_dq,
+    inout [1:0]     ddr3_dqs_n,
+    inout [1:0]     ddr3_dqs_p,
+    output [13:0]   ddr3_addr,
+    output [2:0]    ddr3_ba,
+    output          ddr3_ras_n,
+    output          ddr3_cas_n,
+    output          ddr3_we_n,
+    output          ddr3_reset_n,
+    output [0:0]    ddr3_ck_p,
+    output [0:0]    ddr3_ck_n,
+    output [0:0]    ddr3_cke,
+    output [0:0]    ddr3_cs_n,
+    output [1:0]    ddr3_dm,
+    output [0:0]    ddr3_odt,
+`endif
 //    input logic uart_rx,
     output wire uart_tx,
     output logic [7:0] leds
@@ -1221,18 +1244,21 @@ module riscv_cpu(
     localparam integer BIT_PERIOD = 104160;
 
 `ifdef XILINX_SIMULATOR
-    logic clk = 0;
-    always #10000 clk = ~clk;
+    logic sys_clk_i = 0;
+    always #10000 sys_clk_i = ~sys_clk_i;
     //always #10 clk = ~clk;
-`else
-    wire clk = sys_clk;
 `endif
 
-    wire rst_n;
-    power_on_reset power_on_reset_0(
-        .clk(clk),
-        .btn_reset_n(btn_reset_n),
-        .rst_n(rst_n)
+    wire rst_n = pll_locked;
+    wire clk;
+    wire clk_200;
+    wire pll_locked;
+    clk_wiz_0 u_clk_wiz_0 (
+        .clk_out1(clk_200),
+        .clk_out2(clk),
+        .resetn(btn_reset_n),
+        .locked(pll_locked),
+        .clk_in1(sys_clk_i)
     );
 
     initial begin
@@ -1705,6 +1731,9 @@ module riscv_cpu(
     localparam NUM_COMP                = DQ_WIDTH/MEMORY_WIDTH;
     localparam RESET_PERIOD            = 200000; //in pSec
 
+    wire                               init_calib_complete;
+
+`ifdef XILINX_SIMULATOR
     wire                               ddr3_reset_n;
     wire [DQ_WIDTH-1:0]                ddr3_dq_fpga;
     wire [DQS_WIDTH-1:0]               ddr3_dqs_p_fpga;
@@ -1717,8 +1746,6 @@ module riscv_cpu(
     wire [1-1:0]                       ddr3_cke_fpga;
     wire [1-1:0]                       ddr3_ck_p_fpga;
     wire [1-1:0]                       ddr3_ck_n_fpga;
-
-    wire                               init_calib_complete;
 
     wire [(CS_WIDTH*1)-1:0]            ddr3_cs_n_fpga;
 
@@ -1746,11 +1773,14 @@ module riscv_cpu(
     wire [DQS_WIDTH-1:0]               ddr3_dqs_n_sdram;
     reg [1-1:0]                        ddr3_ck_p_sdram;
     reg [1-1:0]                        ddr3_ck_n_sdram;
+`endif
 
     assign mem_data_MemRead = memRead_en && address_sel == SEL_RAM;
     assign mem_data_MemWrite = memWrite_en && address_sel == SEL_RAM;
     ddr3_ram ddr3_ram_0(
-        .clk(clk),
+        .clk_50(clk),
+        .clk_200(clk_200),
+        .pll_locked(pll_locked),
         .rst_n(rst_n),
         .MemRead(mem_data_MemRead),
         .MemWrite(mem_data_MemWrite),
@@ -1761,6 +1791,7 @@ module riscv_cpu(
         .write_done(mem_data_write_done),
         .init_calib_complete(init_calib_complete),
 
+`ifdef XILINX_SIMULATOR
         .ddr3_dq(ddr3_dq_fpga),
         .ddr3_dqs_n(ddr3_dqs_n_fpga),
         .ddr3_dqs_p(ddr3_dqs_p_fpga),
@@ -1776,8 +1807,26 @@ module riscv_cpu(
         .ddr3_cs_n(ddr3_cs_n_fpga),
         .ddr3_dm(ddr3_dm_fpga),
         .ddr3_odt(ddr3_odt_fpga)
+`else
+        .ddr3_dq(ddr3_dq),
+        .ddr3_dqs_n(ddr3_dqs_n),
+        .ddr3_dqs_p(ddr3_dqs_p),
+        .ddr3_addr(ddr3_addr),
+        .ddr3_ba(ddr3_ba),
+        .ddr3_ras_n(ddr3_ras_n),
+        .ddr3_cas_n(ddr3_cas_n),
+        .ddr3_we_n(ddr3_we_n),
+        .ddr3_reset_n(ddr3_reset_n),
+        .ddr3_ck_p(ddr3_ck_p),
+        .ddr3_ck_n(ddr3_ck_n),
+        .ddr3_cke(ddr3_cke),
+        .ddr3_cs_n(ddr3_cs_n),
+        .ddr3_dm(ddr3_dm),
+        .ddr3_odt(ddr3_odt)
+`endif
     );
 
+`ifdef XILINX_SIMULATOR
     always @( * ) begin
         ddr3_ck_p_sdram      <=  ddr3_ck_p_fpga;
         ddr3_ck_n_sdram      <=  ddr3_ck_n_fpga;
@@ -1900,6 +1949,6 @@ module riscv_cpu(
         end
         end
     endgenerate
-
+`endif
 
 endmodule

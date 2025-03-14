@@ -1,4 +1,4 @@
-`timescale 1ns / 1ps
+`timescale 1ps / 1ps
 // Create Date: 03/07/2025 01:22:51 PM
 
 module axi4_master_ctrl #(

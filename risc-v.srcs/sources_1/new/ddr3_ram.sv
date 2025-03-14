@@ -9,7 +9,9 @@ parameter DM_WIDTH              = 2;
 parameter ODT_WIDTH             = 1;
 
 module ddr3_ram(
-    input logic clk,
+    input logic clk_50,
+    input logic clk_200,
+    input logic pll_locked,
     input logic rst_n,
     input logic MemRead,
     input logic MemWrite,
@@ -48,12 +50,6 @@ module ddr3_ram(
     wire         ui_clk;
     wire         ui_clk_sync_rst;  // MIG內部reset
 
-    wire clk_50;
-    wire clk_200;
-    wire pll_locked;
-
-    assign clk_50 = clk;
-
     reg rstn_50  = 1'b0;
     reg rstn_200 = 1'b0;
     always @(posedge clk_50 or negedge rst_n) begin
@@ -70,12 +66,12 @@ module ddr3_ram(
             rstn_200 <= pll_locked;
     end
 
-    clk_wiz_0 u_clk_wiz_0 (
-        .clk_out1(clk_200),
-        .resetn(rst_n),
-        .locked(pll_locked),
-        .clk_in1(clk)
-    );
+    // clk_wiz_0 u_clk_wiz_0 (
+    //     .clk_out1(clk_200),
+    //     .resetn(rst_n),
+    //     .locked(pll_locked),
+    //     .clk_in1(clk)
+    // );
 
   // Slave Interface Write Address Ports
   wire [C_S_AXI_ID_WIDTH-1:0]       s_axi_awid;

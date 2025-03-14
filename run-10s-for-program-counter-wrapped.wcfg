@@ -5,7 +5,7 @@
    <db_ref_list>
       <db_ref path="riscv_cpu_behav.wdb" id="1">
          <top_modules>
-            <top_module name="\$unit_axi4_master_ctrl_sv_268663580 " />
+            <top_module name="\$unit_uart_sv_268663580 " />
             <top_module name="glbl" />
             <top_module name="ipif_pkg" />
             <top_module name="lib_pkg" />
@@ -14,15 +14,19 @@
       </db_ref>
    </db_ref_list>
    <zoom_setting>
-      <ZoomStartTime time="638,971.375000 ns"></ZoomStartTime>
-      <ZoomEndTime time="641,266.375001 ns"></ZoomEndTime>
-      <Cursor1Time time="640,883.875000 ns"></Cursor1Time>
+      <ZoomStartTime time="624,552.730745 ns"></ZoomStartTime>
+      <ZoomEndTime time="625,325.519838 ns"></ZoomEndTime>
+      <Cursor1Time time="625,196.721655 ns"></Cursor1Time>
    </zoom_setting>
    <column_width_setting>
       <NameColumnWidth column_width="276"></NameColumnWidth>
-      <ValueColumnWidth column_width="72"></ValueColumnWidth>
+      <ValueColumnWidth column_width="68"></ValueColumnWidth>
    </column_width_setting>
-   <WVObjectSize size="30" />
+   <WVObjectSize size="36" />
+   <wvobject type="logic" fp_name="/riscv_cpu/sys_clk_i">
+      <obj_property name="ElementShortName">sys_clk_i</obj_property>
+      <obj_property name="ObjectShortName">sys_clk_i</obj_property>
+   </wvobject>
    <wvobject type="logic" fp_name="/riscv_cpu/clk">
       <obj_property name="ElementShortName">clk</obj_property>
       <obj_property name="ObjectShortName">clk</obj_property>
@@ -31,9 +35,25 @@
       <obj_property name="ElementShortName">rst_n</obj_property>
       <obj_property name="ObjectShortName">rst_n</obj_property>
    </wvobject>
+   <wvobject type="logic" fp_name="/riscv_cpu/init_calib_complete">
+      <obj_property name="ElementShortName">init_calib_complete</obj_property>
+      <obj_property name="ObjectShortName">init_calib_complete</obj_property>
+   </wvobject>
    <wvobject type="array" fp_name="/riscv_cpu/ddr3_ram_0/u_axi4_master_ctrl/state">
       <obj_property name="ElementShortName">state[3:0]</obj_property>
       <obj_property name="ObjectShortName">state[3:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/riscv_cpu/uart_0/write_done">
+      <obj_property name="ElementShortName">write_done</obj_property>
+      <obj_property name="ObjectShortName">write_done</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/riscv_cpu/uart_0/uartlite_ctrl_0/curr_state">
+      <obj_property name="ElementShortName">curr_state[2:0]</obj_property>
+      <obj_property name="ObjectShortName">curr_state[2:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/riscv_cpu/uart_0/uartlite_ctrl_0/next_state">
+      <obj_property name="ElementShortName">next_state[2:0]</obj_property>
+      <obj_property name="ObjectShortName">next_state[2:0]</obj_property>
    </wvobject>
    <wvobject type="logic" fp_name="/riscv_cpu/mem_data_read_data_valid">
       <obj_property name="ElementShortName">mem_data_read_data_valid</obj_property>
@@ -50,6 +70,10 @@
    <wvobject type="logic" fp_name="/riscv_cpu/mem_data_MemWrite">
       <obj_property name="ElementShortName">mem_data_MemWrite</obj_property>
       <obj_property name="ObjectShortName">mem_data_MemWrite</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/riscv_cpu/leds">
+      <obj_property name="ElementShortName">leds[7:0]</obj_property>
+      <obj_property name="ObjectShortName">leds[7:0]</obj_property>
    </wvobject>
    <wvobject type="array" fp_name="/riscv_cpu/mem_alu_out">
       <obj_property name="ElementShortName">mem_alu_out[31:0]</obj_property>

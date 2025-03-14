@@ -21,6 +21,15 @@ auipc 要做的:
 
 uart 目前測試是 write_done 只會有一拍 看起來是正確的
 
+接下來要做的:
+- [ ] 把 uart/led 搬到更高的 address
+- [ ] 在板子上測試 ddr3/uart/led
+- [ ] 實作 jal 指令
+- [ ] 把 ddr3_ram.sv 的 clk 拿掉, 直接傳 clk_50 進去
+
+- [ ] instruction memory 要換成 ddr3
+
+
 ```bash
 docker run -it -v ~/pro/riscv:/pro/riscv ubuntu:24.04
 apt update

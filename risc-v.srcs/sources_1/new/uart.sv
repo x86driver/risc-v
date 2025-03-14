@@ -1,4 +1,4 @@
-`timescale 1ns / 1ps
+`timescale 1ps / 1ps
 // Create Date: 02/15/2025 01:47:54 AM
 
 module axi_uartlite_ctrl(

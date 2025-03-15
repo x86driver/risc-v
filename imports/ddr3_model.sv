@@ -428,7 +428,7 @@ module ddr3_model (
         // Preload section
     `ifdef mem_init
         $display("Current Verilog file location: %s", `__FILE__);
-        in = $fopen("/pro/fpga/risc-v/imports/mem_init.txt","r");
+        in = $fopen("mem_init.txt","r");
         if (in == 0) begin
             $display("Error on open mem_init.txt");
             $finish;

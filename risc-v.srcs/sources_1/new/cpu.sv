@@ -62,8 +62,11 @@ module instruction_memory(
     output logic [31:0] inst
 );
 
-    localparam INST_COUNT = 18;
+    localparam INST_COUNT = 1;
 
+    logic [31:0] mem [INST_COUNT] = '{
+        32'h00002083
+    };
 /* 測試 lui 和 auipc */
 /*
     logic [31:0] mem [INST_COUNT] = '{
@@ -95,7 +98,7 @@ module instruction_memory(
 */
 /* ddr3 讀寫 + 迴圈, 測試正確會讓 leds 輸出 0x1 */
 /* 超過 UART_ADDR_OFFSET 會讓 leds 輸出 0x1 + 0x2 = 0x3 */
-
+/*
     logic [31:0] mem [INST_COUNT] = '{
         32'h000000b3, // add x1, x0, x0 // value
         32'h00000133, // add x2, x0, x0 // address
@@ -116,7 +119,7 @@ module instruction_memory(
         32'h0062a023, // sw x6, (x5)
         32'h00000063  // _error_end: beq x0, x0, ._error_end
     };
-
+*/
 /* ddr3 讀寫測試 */
 /*
     logic [31:0] mem [INST_COUNT] = '{

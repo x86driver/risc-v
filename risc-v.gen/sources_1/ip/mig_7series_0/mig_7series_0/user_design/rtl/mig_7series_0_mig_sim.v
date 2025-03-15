@@ -399,13 +399,13 @@ module mig_7series_0_mig #
                                      //   = "OFF" - DDR2 SDRAM.
    parameter ORDERING              = "STRICT",
                                      // # = "NORM", "STRICT", "RELAXED".
-   parameter CALIB_ROW_ADD         = 16'h0000,
+   parameter CALIB_ROW_ADD         = 16'h0100,
                                      // Calibration row address will be used for
                                      // calibration read and write operations
-   parameter CALIB_COL_ADD         = 12'h000,
+   parameter CALIB_COL_ADD         = 12'h010,
                                      // Calibration column address will be used for
                                      // calibration read and write operations
-   parameter CALIB_BA_ADD          = 3'h0,
+   parameter CALIB_BA_ADD          = 3'h1,
                                      // Calibration bank address will be used for
                                      // calibration read and write operations
    parameter TCQ                   = 100,

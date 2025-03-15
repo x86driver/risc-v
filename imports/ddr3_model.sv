@@ -96,6 +96,8 @@
 // model flags
 // `define MODEL_PASR
 //Memory Details
+`define MAX_MEM
+`define mem_init
 `define x2Gb
 `define sg125
 `define x16
@@ -425,7 +427,12 @@ module ddr3_model (
 
         // Preload section
     `ifdef mem_init
-        in = $fopen("mem_init.txt","r");
+        $display("Current Verilog file location: %s", `__FILE__);
+        in = $fopen("/pro/fpga/risc-v/imports/mem_init.txt","r");
+        if (in == 0) begin
+            $display("Error on open mem_init.txt");
+            $finish;
+        end
         while (! $feof(in)) begin
             fio_status = $fscanf(in, "%h %s %h", addr, _char, data);
             if (fio_status != -1) begin // Check for blank line or EOF

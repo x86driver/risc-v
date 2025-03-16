@@ -62,11 +62,13 @@ module instruction_memory(
     output logic [31:0] inst
 );
 
-    localparam INST_COUNT = 1;
+    localparam INST_COUNT = 18;
 
+/*
     logic [31:0] mem [INST_COUNT] = '{
         32'h00002083
     };
+*/
 /* 測試 lui 和 auipc */
 /*
     logic [31:0] mem [INST_COUNT] = '{
@@ -98,7 +100,7 @@ module instruction_memory(
 */
 /* ddr3 讀寫 + 迴圈, 測試正確會讓 leds 輸出 0x1 */
 /* 超過 UART_ADDR_OFFSET 會讓 leds 輸出 0x1 + 0x2 = 0x3 */
-/*
+
     logic [31:0] mem [INST_COUNT] = '{
         32'h000000b3, // add x1, x0, x0 // value
         32'h00000133, // add x2, x0, x0 // address
@@ -119,7 +121,7 @@ module instruction_memory(
         32'h0062a023, // sw x6, (x5)
         32'h00000063  // _error_end: beq x0, x0, ._error_end
     };
-*/
+
 /* ddr3 讀寫測試 */
 /*
     logic [31:0] mem [INST_COUNT] = '{
@@ -328,13 +330,14 @@ module data_memory_multicycle(
 
     state_t state;  // 當前狀態
 
-    logic [31:0] mem [5] = {
-        32'hDEAD_BEEF,
-        32'h4444_4444,
-        32'h8888_8888,
-        32'hCCCC_CCCC,
-        32'h1010_1010
-    };
+    logic [31:0] mem [4096];
+    // logic [31:0] mem [5] = {
+    //     32'hDEAD_BEEF,
+    //     32'h4444_4444,
+    //     32'h8888_8888,
+    //     32'hCCCC_CCCC,
+    //     32'h1010_1010
+    // };
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -373,6 +376,7 @@ module data_memory_multicycle(
                 end
 
                 WRITE_DONE: begin
+                    write_done <= 0;
                     state <= IDLE;
                 end
 
@@ -1674,7 +1678,6 @@ module riscv_cpu(
     //     .read_data(mem_memory_read_data)
     // );
 
-/*
     data_memory_multicycle data_memory_multicycle_0(
         .clk(clk),
         .rst_n(rst_n),
@@ -1687,7 +1690,6 @@ module riscv_cpu(
         .write_done(mem_data_write_done),
         .init_calib_complete(1'b1)
     );
-*/
 
     assign mem_uart_MemRead = memRead_en && address_sel == SEL_UART;
     assign mem_uart_MemWrite = memWrite_en && address_sel == SEL_UART;
@@ -1783,6 +1785,7 @@ module riscv_cpu(
 
     assign mem_data_MemRead = memRead_en && address_sel == SEL_RAM;
     assign mem_data_MemWrite = memWrite_en && address_sel == SEL_RAM;
+/*
     ddr3_ram ddr3_ram_0(
         .clk_50(clk),
         .clk_200(clk_200),
@@ -1831,6 +1834,7 @@ module riscv_cpu(
         .ddr3_odt(ddr3_odt)
 `endif
     );
+*/
 
 `ifdef XILINX_SIMULATOR
     always @( * ) begin

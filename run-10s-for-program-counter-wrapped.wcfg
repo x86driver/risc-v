@@ -14,15 +14,15 @@
       </db_ref>
    </db_ref_list>
    <zoom_setting>
-      <ZoomStartTime time="4,789.583 ns"></ZoomStartTime>
-      <ZoomEndTime time="5,042.084 ns"></ZoomEndTime>
-      <Cursor1Time time="5,000.000 ns"></Cursor1Time>
+      <ZoomStartTime time="1,824.880 ns"></ZoomStartTime>
+      <ZoomEndTime time="2,192.652 ns"></ZoomEndTime>
+      <Cursor1Time time="1,979.564 ns"></Cursor1Time>
    </zoom_setting>
    <column_width_setting>
       <NameColumnWidth column_width="196"></NameColumnWidth>
-      <ValueColumnWidth column_width="106"></ValueColumnWidth>
+      <ValueColumnWidth column_width="98"></ValueColumnWidth>
    </column_width_setting>
-   <WVObjectSize size="51" />
+   <WVObjectSize size="47" />
    <wvobject type="logic" fp_name="/riscv_cpu/clk">
       <obj_property name="ElementShortName">clk</obj_property>
       <obj_property name="ObjectShortName">clk</obj_property>
@@ -32,16 +32,22 @@
       <obj_property name="ObjectShortName">rst_n</obj_property>
    </wvobject>
    <wvobject type="array" fp_name="/riscv_cpu/data_memory_multicycle_0/state">
+      <obj_property name="DisplayName">label</obj_property>
       <obj_property name="ElementShortName">state[3:0]</obj_property>
       <obj_property name="ObjectShortName">state[3:0]</obj_property>
+      <obj_property name="label">data_state[3:0]</obj_property>
    </wvobject>
-   <wvobject type="array" fp_name="/riscv_cpu/data_memory_multicycle_0/address">
-      <obj_property name="ElementShortName">address[31:0]</obj_property>
-      <obj_property name="ObjectShortName">address[31:0]</obj_property>
+   <wvobject type="array" fp_name="/riscv_cpu/data_memory_multicycle_0/if_inst">
+      <obj_property name="ElementShortName">if_inst[31:0]</obj_property>
+      <obj_property name="ObjectShortName">if_inst[31:0]</obj_property>
    </wvobject>
-   <wvobject type="array" fp_name="/riscv_cpu/data_memory_multicycle_0/read_data">
-      <obj_property name="ElementShortName">read_data[31:0]</obj_property>
-      <obj_property name="ObjectShortName">read_data[31:0]</obj_property>
+   <wvobject type="array" fp_name="/riscv_cpu/data_memory_multicycle_0/mem_data_rdata">
+      <obj_property name="ElementShortName">mem_data_rdata[31:0]</obj_property>
+      <obj_property name="ObjectShortName">mem_data_rdata[31:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/riscv_cpu/stall_unit_0/hazard_stall">
+      <obj_property name="ElementShortName">hazard_stall</obj_property>
+      <obj_property name="ObjectShortName">hazard_stall</obj_property>
    </wvobject>
    <wvobject type="logic" fp_name="/riscv_cpu/stall_unit_0/mem_stall">
       <obj_property name="ElementShortName">mem_stall</obj_property>
@@ -51,14 +57,6 @@
       <obj_property name="ElementShortName">if_stall</obj_property>
       <obj_property name="ObjectShortName">if_stall</obj_property>
    </wvobject>
-   <wvobject type="array" fp_name="/riscv_cpu/data_memory_multicycle_0/address">
-      <obj_property name="ElementShortName">address[31:0]</obj_property>
-      <obj_property name="ObjectShortName">address[31:0]</obj_property>
-   </wvobject>
-   <wvobject type="array" fp_name="/riscv_cpu/data_memory_multicycle_0/read_data">
-      <obj_property name="ElementShortName">read_data[31:0]</obj_property>
-      <obj_property name="ObjectShortName">read_data[31:0]</obj_property>
-   </wvobject>
    <wvobject type="logic" fp_name="/riscv_cpu/mem_data_read_data_valid">
       <obj_property name="ElementShortName">mem_data_read_data_valid</obj_property>
       <obj_property name="ObjectShortName">mem_data_read_data_valid</obj_property>
@@ -67,17 +65,25 @@
       <obj_property name="ElementShortName">mem_data_MemRead</obj_property>
       <obj_property name="ObjectShortName">mem_data_MemRead</obj_property>
    </wvobject>
-   <wvobject type="array" fp_name="/riscv_cpu/mem_mux_read_data">
-      <obj_property name="ElementShortName">mem_mux_read_data[31:0]</obj_property>
-      <obj_property name="ObjectShortName">mem_mux_read_data[31:0]</obj_property>
+   <wvobject type="logic" fp_name="/riscv_cpu/id_MemRead">
+      <obj_property name="ElementShortName">id_MemRead</obj_property>
+      <obj_property name="ObjectShortName">id_MemRead</obj_property>
    </wvobject>
-   <wvobject type="array" fp_name="/riscv_cpu/mem_memory_read_data">
-      <obj_property name="ElementShortName">mem_memory_read_data[31:0]</obj_property>
-      <obj_property name="ObjectShortName">mem_memory_read_data[31:0]</obj_property>
+   <wvobject type="logic" fp_name="/riscv_cpu/ex_MemRead">
+      <obj_property name="ElementShortName">ex_MemRead</obj_property>
+      <obj_property name="ObjectShortName">ex_MemRead</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/riscv_cpu/mem_MemRead">
+      <obj_property name="ElementShortName">mem_MemRead</obj_property>
+      <obj_property name="ObjectShortName">mem_MemRead</obj_property>
    </wvobject>
    <wvobject type="array" fp_name="/riscv_cpu/wb_reg_write_data">
       <obj_property name="ElementShortName">wb_reg_write_data[31:0]</obj_property>
       <obj_property name="ObjectShortName">wb_reg_write_data[31:0]</obj_property>
+   </wvobject>
+   <wvobject type="logic" fp_name="/riscv_cpu/PCWrite_final">
+      <obj_property name="ElementShortName">PCWrite_final</obj_property>
+      <obj_property name="ObjectShortName">PCWrite_final</obj_property>
    </wvobject>
    <wvobject type="logic" fp_name="/riscv_cpu/if_id_Write">
       <obj_property name="ElementShortName">if_id_Write</obj_property>
@@ -119,10 +125,6 @@
       <obj_property name="ElementShortName">wb_RegWrite</obj_property>
       <obj_property name="ObjectShortName">wb_RegWrite</obj_property>
    </wvobject>
-   <wvobject type="array" fp_name="/riscv_cpu/leds">
-      <obj_property name="ElementShortName">leds[7:0]</obj_property>
-      <obj_property name="ObjectShortName">leds[7:0]</obj_property>
-   </wvobject>
    <wvobject type="array" fp_name="/riscv_cpu/mem_alu_out">
       <obj_property name="ElementShortName">mem_alu_out[31:0]</obj_property>
       <obj_property name="ObjectShortName">mem_alu_out[31:0]</obj_property>
@@ -134,14 +136,6 @@
    <wvobject type="logic" fp_name="/riscv_cpu/branch_unit_0/branch_taken">
       <obj_property name="ElementShortName">branch_taken</obj_property>
       <obj_property name="ObjectShortName">branch_taken</obj_property>
-   </wvobject>
-   <wvobject type="array" fp_name="/riscv_cpu/branch_unit_0/ex_mux3to1_alu_a_out">
-      <obj_property name="ElementShortName">ex_mux3to1_alu_a_out[31:0]</obj_property>
-      <obj_property name="ObjectShortName">ex_mux3to1_alu_a_out[31:0]</obj_property>
-   </wvobject>
-   <wvobject type="array" fp_name="/riscv_cpu/branch_unit_0/ex_mux3to1_alu_b_out">
-      <obj_property name="ElementShortName">ex_mux3to1_alu_b_out[31:0]</obj_property>
-      <obj_property name="ObjectShortName">ex_mux3to1_alu_b_out[31:0]</obj_property>
    </wvobject>
    <wvobject type="array" fp_name="/riscv_cpu/branch_unit_0/pc_branch_target">
       <obj_property name="ElementShortName">pc_branch_target[31:0]</obj_property>
@@ -171,14 +165,6 @@
       <obj_property name="ElementShortName">registers[0:31][31:0]</obj_property>
       <obj_property name="ObjectShortName">registers[0:31][31:0]</obj_property>
       <obj_property name="isExpanded"></obj_property>
-   </wvobject>
-   <wvobject type="logic" fp_name="/riscv_cpu/stall_unit_0/mem_stall">
-      <obj_property name="ElementShortName">mem_stall</obj_property>
-      <obj_property name="ObjectShortName">mem_stall</obj_property>
-   </wvobject>
-   <wvobject type="logic" fp_name="/riscv_cpu/stall_unit_0/hazard_stall">
-      <obj_property name="ElementShortName">hazard_stall</obj_property>
-      <obj_property name="ObjectShortName">hazard_stall</obj_property>
    </wvobject>
    <wvobject type="logic" fp_name="/riscv_cpu/if_id_Write">
       <obj_property name="ElementShortName">if_id_Write</obj_property>

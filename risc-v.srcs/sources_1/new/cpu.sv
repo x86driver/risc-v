@@ -301,8 +301,9 @@ module instruction_memory_multicycle(
 
     state_t state;  // 當前狀態
 
-    localparam INST_COUNT = 18;
+    localparam INST_COUNT = 6;
 
+/*
     logic [31:0] mem [INST_COUNT] = {
         32'h000000b3, // add x1, x0, x0 // value
         32'h00000133, // add x2, x0, x0 // address
@@ -323,6 +324,7 @@ module instruction_memory_multicycle(
         32'h0062a023, // sw x6, (x5)
         32'h00000063  // _error_end: beq x0, x0, ._error_end
     };
+*/
 /*
     logic [31:0] mem [INST_COUNT] = {
         32'h0000_0133, // add	x2,x0,x0
@@ -334,7 +336,7 @@ module instruction_memory_multicycle(
         32'h0040_2183  // lw	x3,4(x0) # 4 <_start+0x4>
     };
 */
-/*
+
     logic [31:0] mem [INST_COUNT] = {
         32'h0000_2083, // lw	x1,0(x0) # 0 <_start>
         32'h0040_2103, // lw	x2,4(x0) # 4 <_start+0x4>
@@ -343,7 +345,7 @@ module instruction_memory_multicycle(
         32'h0100_2283, // lw	x5,16(x0) # 10 <_start+0x10>
         32'h00928313   // addi    x6,x5,9
     };
-*/
+
 /*
     logic [31:0] mem [INST_COUNT] = {
         32'h00a00093, // addi   x1, x0, 10  # x1 = 0xa
@@ -465,12 +467,20 @@ endmodule
 module data_memory_multicycle(
     input logic clk,
     input logic rst_n,
-    input logic MemRead,
+
+    input  logic if_pc_MemRead,
+    input  logic [31:0] if_pc_address,
+    output logic if_pc_read_data_valid,
+    output logic [31:0] if_inst,
+
+    input  logic mem_data_MemRead,
+    input  logic [31:0] mem_data_address,
+    output logic mem_data_read_data_valid,
+    output logic [31:0] mem_data_rdata,
+
     input logic MemWrite,
-    input logic [31:0] address,
+    input logic [31:0] write_address,
     input logic [31:0] write_data,
-    output logic read_data_valid,
-    output logic [31:0] read_data,
     output logic write_done,
     input logic init_calib_complete
 );
@@ -488,31 +498,107 @@ module data_memory_multicycle(
 
     state_t state;  // 當前狀態
 
-    //logic [31:0] mem [4096];
-    logic [31:0] mem [5] = {
-        32'hDEAD_BEEF,
-        32'h4444_4444,
-        32'h8888_8888,
-        32'hCCCC_CCCC,
-        32'h1010_1010
+    integer counter = 0;
+    localparam INST_COUNT = 6;
+    /* hazard 測試 */
+    /*
+    logic [31:0] mem [INST_COUNT] = {
+        32'h00a00093, // addi   x1, x0, 10  # x1 = 0xa
+        32'h00500113, // addi   x2, x0, 5   # x2 = 0x5
+        32'h002081b3, // add    x3, x1, x2  # x3 = 0xf
+        32'h40218233, // sub    x4, x3, x2  # x4 = 0xa
+        32'h00408263, // beq    x1, x4, _NEXT
+        32'h003202b3, // _NEXT: add    x5, x4, x3  # x5 = 0x19
+        32'h00800313, // addi   x6, x0, 8   # x6 = 8
+        32'h00432383, // lw     x7, 4(x6)   # x7 = 0x40218233
+        32'h00730433  // add    x8, x6, x7  # x8 = 0x4021823b
     };
+    */
+    /* uart rx with interrupt */
+    logic [31:0] mem [INST_COUNT] = '{
+        32'h70000093, // addi x1, x0, 0x700
+        32'h01000113, // addi x2, x0, 16
+        32'h0020a623, // sw x2, 0xc(x1)
+        32'h0000a183, // _RECV: lw x3, 0x0(x1)
+        32'hfe000ee3, // beq x0, x0, _RECV
+        32'h00400213  // addi x4, x0, 4
+    };
+    /*
+    logic [31:0] mem [INST_COUNT] = {
+        32'h0000_2083, // lw	x1,0(x0) # 0 <_start>
+        32'h0000_9463, // bnez	x1,c <skip>
+        32'h0020_0113, // li	x2,2
+        32'h0090_8093, // addi	x1,x1,9
+        32'h0030_0193  // li	x3,3
+    };
+    */
+    /*
+    logic [31:0] mem [INST_COUNT] = {
+        32'h0000_2023, // sw	x0,0(x0) # 0 <_start>
+        32'h0000_2083, // lw	x1,0(x0) # 0 <_start>
+
+        32'h0000_2223, // sw	x0,4(x0) # 4 <_start+0x4>
+        32'h0040_2103, // lw	x2,4(x0) # 4 <_start+0x4>
+
+        32'h0000_2423, // sw	x0,8(x0) # 8 <_start+0x8>
+        32'h0080_2183, // lw	x3,8(x0) # 8 <_start+0x8>
+
+        32'h0000_2623, // sw	x0,12(x0) # c <_start+0xc>
+        32'h00c0_2203, // lw	x4,12(x0) # c <_start+0xc>
+
+        32'h0000_2823, // sw	x0,16(x0) # 10 <_start+0x10>
+        32'h0100_2283  // lw	x5,16(x0) # 10 <_start+0x10>
+    };
+    */
+    /*
+    logic [31:0] mem [INST_COUNT] = {
+        32'h00002023, // sw      x0,0(x0)
+        32'h00002083  // lw      x1,0(x0)
+    };
+    */
+    /*1+到10*/
+    /*
+    logic [31:0] mem [INST_COUNT] = {
+        32'h0000_0133, // add	x2,x0,x0
+        32'h00a0_0093, // li	x1,10
+        32'h0011_0133, // add	x2,x2,x1
+        32'hfff0_8093, // addi	x1,x1,-1
+        32'hfe00_9ce3, // bnez	x1,8 <.L1>
+        32'h0020_2223, // sw	x2,4(x0) # 4 <_start+0x4>
+        32'h0040_2183  // lw	x3,4(x0) # 4 <_start+0x4>
+    };
+    */
+    /*
+    logic [31:0] mem [INST_COUNT] = {
+        32'h0000_2083, // lw	x1,0(x0) # 0 <_start>
+        32'h0040_2103, // lw	x2,4(x0) # 4 <_start+0x4>
+        32'h0080_2183, // lw	x3,8(x0) # 8 <_start+0x8>
+        32'h00c0_2203, // lw	x4,12(x0) # c <_start+0xc>
+        32'h0100_2283, // lw	x5,16(x0) # 10 <_start+0x10>
+        32'h0092_8313  // addi  x6,x5,9
+    };
+    */
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state <= IDLE;
-            read_data <= 0;
-            read_data_valid <= 0;
             write_done <= 0;
+            counter <= 0;
+            if_pc_read_data_valid <= 0;
+            mem_data_read_data_valid <= 0;
         end else begin
             case (state)
                 IDLE: begin
-                    read_data_valid <= 0;
+                    if_pc_read_data_valid <= 0;
+                    mem_data_read_data_valid <= 0;
                     write_done <= 0;
                     if (init_calib_complete) begin
-                        if (MemRead) begin
+                        if (mem_data_MemRead) begin
                             state <= READ_ADDR;
                         end else if (MemWrite) begin
                             state <= WRITE_ADDR;
+                        end else if (if_pc_MemRead) begin
+                            state <= READ_ADDR;
                         end else begin
                             state <= IDLE;
                         end
@@ -524,7 +610,7 @@ module data_memory_multicycle(
                 end
 
                 WRITE_DATA: begin
-                    mem[address[31:2]] <= write_data;
+                    mem[write_address[31:2]] <= write_data;
                     state <= WRITE_RESP;
                 end
 
@@ -543,13 +629,32 @@ module data_memory_multicycle(
                 end
 
                 READ_DATA: begin
-                    read_data <= mem[address[31:2]];
-                    read_data_valid <= 1;
-                    state <= READ_DONE;
+                    if (counter < 2) begin
+                        counter <= counter + 1;
+                    end else begin
+                        counter <= 0;
+                        if (mem_data_MemRead) begin
+                            if (mem_data_address < 4*INST_COUNT) begin
+                                mem_data_rdata <= mem[mem_data_address[31:2]];
+                            end else begin
+                                mem_data_rdata <= 32'h0;
+                            end
+                            mem_data_read_data_valid <= 1;
+                        end else if (if_pc_MemRead) begin
+                            if (if_pc_address < 4*INST_COUNT) begin
+                                if_inst <= mem[if_pc_address[31:2]];
+                            end else begin
+                                if_inst <= 32'h0;
+                            end
+                            if_pc_read_data_valid <= 1;
+                        end
+                        state <= READ_DONE;
+                    end
                 end
 
                 READ_DONE: begin
-                    read_data_valid <= 0;
+                    if_pc_read_data_valid <= 0;
+                    mem_data_read_data_valid <= 0;
                     state <= IDLE;
                 end
 
@@ -1146,17 +1251,21 @@ module hazard_mux_2to2(
     input logic sel,
     input logic MemWrite,
     input logic RegWrite,
+    input logic MemRead,
     output logic mux_MemWrite,
-    output logic mux_RegWrite
+    output logic mux_RegWrite,
+    output logic mux_MemRead
 );
 
     always_comb begin
         if (sel) begin
             mux_MemWrite = MemWrite;
             mux_RegWrite = RegWrite;
+            mux_MemRead = MemRead;
         end else begin
             mux_MemWrite = 1'b0;
             mux_RegWrite = 1'b0;
+            mux_MemRead = 1'b0;
         end
     end
 
@@ -1314,11 +1423,11 @@ module stall_unit(
         end else if (if_stall) begin
             PCWrite     = 1'b0;
             if_id_Write = 1'b0;
-            id_ex_Write = 1'b0;
-            ex_mem_Write= 1'b0;
-            mem_wb_Write= 1'b0;
+            id_ex_Write = 1'b1;
+            ex_mem_Write= 1'b1;
+            mem_wb_Write= 1'b1;
 
-            hazard_control_mux_sel = 1'b1;
+            hazard_control_mux_sel = 1'b0;
         end else if (hazard_stall) begin
             // === load-use hazard → freeze 前半段(PC/IF_ID) ===
             PCWrite     = 1'b0;   // freeze PC
@@ -1428,7 +1537,7 @@ module riscv_cpu(
 );
 
     logic uart_rx = 1;
-    localparam integer BIT_PERIOD = 104160;
+    localparam integer BIT_PERIOD = 104160 * 1000;
 
 `ifdef XILINX_SIMULATOR
     logic sys_clk_i = 0;
@@ -1449,6 +1558,7 @@ module riscv_cpu(
     );
 
     initial begin
+        @(posedge rst_n);
         #1000;
         send_uart(8'h41);
         #(BIT_PERIOD * 2);
@@ -1505,6 +1615,7 @@ module riscv_cpu(
 
     wire mux_id_MemWrite;
     wire mux_id_RegWrite;
+    wire mux_id_MemRead;
 
     wire ex_ALUSrc;
     wire [1:0] ex_ALUSrcA_sel;
@@ -1624,6 +1735,7 @@ module riscv_cpu(
     wire if_pc_read_data_valid;
     assign if_pc_MemRead = 1'b1;
 
+/*
     instruction_memory_multicycle inst_mem_multicycle_0(
         .clk(clk),
         .rst_n(rst_n),
@@ -1636,6 +1748,7 @@ module riscv_cpu(
         .write_done(),
         .init_calib_complete(1'b1)
     );
+*/
 
     stall_unit stall_unit_0(
         .ex_MemRead(ex_MemRead),
@@ -1664,8 +1777,10 @@ module riscv_cpu(
         .sel(hazard_control_mux_sel),
         .MemWrite(id_MemWrite),
         .RegWrite(id_RegWrite),
+        .MemRead(id_MemRead),
         .mux_MemWrite(mux_id_MemWrite),
-        .mux_RegWrite(mux_id_RegWrite)
+        .mux_RegWrite(mux_id_RegWrite),
+        .mux_MemRead(mux_id_MemRead)
     );
 
     if_id_pipeline if_id_pipeline_0(
@@ -1689,7 +1804,7 @@ module riscv_cpu(
         .id_ALUSrcA_sel(id_ALUSrcA_sel),
         .id_MemtoReg(id_MemtoReg),
         .id_RegWrite(mux_id_RegWrite),
-        .id_MemRead(id_MemRead),
+        .id_MemRead(mux_id_MemRead),
         .id_MemWrite(mux_id_MemWrite),
         .id_Branch(id_Branch),
         .id_ALUOp(id_ALUOp),
@@ -1883,12 +1998,19 @@ module riscv_cpu(
     data_memory_multicycle data_memory_multicycle_0(
         .clk(clk),
         .rst_n(rst_n),
-        .MemRead(mem_data_MemRead),
+        .if_pc_MemRead(if_pc_MemRead),
+        .if_pc_address(pc_current),
+        .if_pc_read_data_valid(if_pc_read_data_valid),
+        .if_inst(if_inst),
+
+        .mem_data_MemRead(mem_data_MemRead),
+        .mem_data_address(mem_alu_out),
+        .mem_data_read_data_valid(mem_data_read_data_valid),
+        .mem_data_rdata(mem_memory_read_data),
+
         .MemWrite(mem_data_MemWrite),
-        .address(mem_alu_out),
+        .write_address(mem_alu_out),
         .write_data(mem_read_data2),
-        .read_data_valid(mem_data_read_data_valid),
-        .read_data(mem_memory_read_data),
         .write_done(mem_data_write_done),
         .init_calib_complete(1'b1)
     );

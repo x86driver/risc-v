@@ -1,10 +1,18 @@
 all:
 	iverilog -g2012 -Wall -DIVERILOG -I risc-v.srcs/sources_1/new -o simv risc-v.srcs/sources_1/new/tb_riscv_cpu.sv risc-v.srcs/sources_1/new/cpu.sv risc-v.srcs/sources_1/new/clk_wiz_0_stub.sv
 
+# Build program/main_prog.hex from program/source/main.S with comments
+.PHONY: mainhex
+mainhex: program/main_prog.hex
+
+program/%_prog.hex: program/source/%.S scripts/asm_to_hex.py
+	python3 scripts/asm_to_hex.py --input $< --output $@
+
 test: all
 	vvp ./simv +HEX=program/lw_prog.hex +EXP=program/lw.exp +CASE=lw
 	vvp ./simv +HEX=program/hazard_prog.hex +EXP=program/hazard.exp +CASE=hazard
 	vvp ./simv +HEX=program/jal_prog.hex +EXP=program/jal.exp +CASE=jal +FORBID_RD=3 +EXPECT_REG=2:0x0000000c
+	vvp ./simv +HEX=program/sum1to10_prog.hex +EXP=program/sum1to10.exp +CASE=sum1to10
 
 clean:
 	rm -f simv

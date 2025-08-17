@@ -1,0 +1,4 @@
+00900093  // addi x1, x0, 9
+00108093  // addi x1, x1, 1
+ffdff16f  // jal x2, incr
+00f00193  // addi x3, x0, 0xf

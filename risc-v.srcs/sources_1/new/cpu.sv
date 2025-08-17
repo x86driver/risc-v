@@ -1,7 +1,11 @@
 `timescale 1ps / 1ps
 // Create Date: 01/20/2025 01:31:56 PM
 
+`ifdef IVERILOG
+`include "uart_stub_iverilog.sv"
+`else
 `include "uart.sv"
+`endif
 `ifdef XILINX_SIMULATOR
 `include "wiredly.v"
 `include "ddr3_model.sv"
@@ -99,39 +103,48 @@ module data_memory_multicycle(
     state_t state;
 
     // 單埠模擬 RAM（用來同時當 i/d，讓 lw 讀到自身指令值）
-    localparam INST_COUNT = 9;
+    // 改為可讀入外部 HEX（每行一個 32-bit 指令，十六進位，不含 0x）
+    parameter MEM_WORDS = 1024;
 
-    /*
-    logic [31:0] mem [INST_COUNT] = '{
-        32'h0000_2083, // lw x1,0(x0)
-        32'h0040_2103, // lw x2,4(x0)
-        32'h0080_2183, // lw x3,8(x0)
-        32'h00c0_2203, // lw x4,12(x0)
-        32'h0100_2283, // lw x5,16(x0)
-        32'h0092_8313  // addi x6,x5,9
-    };
-    */
+    /* hazard 測試 / 或由外部 HEX 載入 */
+    logic [31:0] mem [0:MEM_WORDS-1];
+    initial begin : init_memory
+        string hexfile;
+        if ($value$plusargs("HEX=%s", hexfile)) begin
+            $display("[mem] Loading program from %0s", hexfile);
+            $readmemh(hexfile, mem);
+        end else begin
+            // 預設指令
+            // hazard test
+            /*
+            mem[0] = 32'h00a00093; // addi   x1, x0, 10  # x1 = 0xa
+            mem[1] = 32'h00500113; // addi   x2, x0, 5   # x2 = 0x5
+            mem[2] = 32'h002081b3; // add    x3, x1, x2  # x3 = 0xf
+            mem[3] = 32'h40218233; // sub    x4, x3, x2  # x4 = 0xa
+            mem[4] = 32'h00408263; // beq    x1, x4, _NEXT
+            mem[5] = 32'h003202b3; // _NEXT: add    x5, x4, x3  # x5 = 0x19
+            mem[6] = 32'h00800313; // addi   x6, x0, 8   # x6 = 8
+            mem[7] = 32'h00432383; // lw     x7, 4(x6)   # x7 = 0x40218233
+            mem[8] = 32'h00730433; // add    x8, x6, x7  # x8 = 0x4021823b
+            */
+            // lw test
 
-    /*
-    logic [31:0] mem [INST_COUNT] = {
-        32'h0090_0093, // addi	x1,x0,9
-        32'h0010_8093, // addi	x1,x1,1
-        32'hffdf_f16f, // jal	x2,4 <incr>
-        32'h00f0_0193  // addi	x3,x0,15
-    };
-    */
-    /* hazard 測試 */
-    logic [31:0] mem [INST_COUNT] = {
-        32'h00a00093, // addi   x1, x0, 10  # x1 = 0xa
-        32'h00500113, // addi   x2, x0, 5   # x2 = 0x5
-        32'h002081b3, // add    x3, x1, x2  # x3 = 0xf
-        32'h40218233, // sub    x4, x3, x2  # x4 = 0xa
-        32'h00408263, // beq    x1, x4, _NEXT
-        32'h003202b3, // _NEXT: add    x5, x4, x3  # x5 = 0x19
-        32'h00800313, // addi   x6, x0, 8   # x6 = 8
-        32'h00432383, // lw     x7, 4(x6)   # x7 = 0x40218233
-        32'h00730433  // add    x8, x6, x7  # x8 = 0x4021823b
-    };
+            mem[0] = 32'h0000_2083; // lw x1,0(x0)
+            mem[1] = 32'h0040_2103; // lw x2,4(x0)
+            mem[2] = 32'h0080_2183; // lw x3,8(x0)
+            mem[3] = 32'h00c0_2203; // lw x4,12(x0)
+            mem[4] = 32'h0100_2283; // lw x5,16(x0)
+            mem[5] = 32'h0092_8313; // addi x6,x5,9
+
+            // jal test
+            /*
+            mem[0] = 32'h0090_0093; // addi	x1,x0,9
+            mem[1] = 32'h0010_8093; // addi	x1,x1,1
+            mem[2] = 32'hffdf_f16f; // jal	x2,4 <incr>
+            mem[3] = 32'h00f0_0193; // addi	x3,x0,15
+            */
+        end
+    end
 
     // 仲裁/握手
     logic        serving_if;       // 1: IF, 0: DATA
@@ -175,21 +188,20 @@ module data_memory_multicycle(
                         want_if  = if_pc_MemRead;                 // 取指永遠想要
                         want_mem = mem_data_MemRead && !mem_req_issued; // 同一筆只受理一次
 
-                        if (want_if || want_mem) begin
-                            if (want_if && (!want_mem || last_was_mem)) begin
-                                // 服務 IF
-                                serving_if <= 1'b1;
-                                if_addr_q  <= if_pc_address;
-                                if_busy    <= 1'b1;
-                                state      <= READ_ADDR;
-                            end else begin
-                                // 服務 DATA
-                                serving_if      <= 1'b0;
-                                data_addr_q     <= mem_data_address;
-                                data_busy       <= 1'b1;
-                                state           <= READ_ADDR;
-                                mem_req_issued  <= 1'b1; // 已受理當前 MEM 讀
-                            end
+                        // 公平仲裁：若兩者皆想要，交替服務（避免連續 DATA 造成重發同一筆讀）
+                        if (want_if && (!want_mem || last_was_mem)) begin
+                            // 服務 IF
+                            serving_if <= 1'b1;
+                            if_addr_q  <= if_pc_address;
+                            if_busy    <= 1'b1;
+                            state      <= READ_ADDR;
+                        end else if (want_mem) begin
+                            // 服務 DATA
+                            serving_if      <= 1'b0;
+                            data_addr_q     <= mem_data_address;
+                            data_busy       <= 1'b1;
+                            state           <= READ_ADDR;
+                            mem_req_issued  <= 1'b1; // 已受理當前 MEM 讀
                         end
                     end
                 end
@@ -219,11 +231,19 @@ module data_memory_multicycle(
                     end else begin
                         counter <= 0;
                         if (serving_if) begin
-                            if_inst <= (if_addr_q < 4*INST_COUNT) ? mem[if_addr_q[31:2]] : 32'h0;
+                            if (if_addr_q[31:2] < MEM_WORDS)
+                                if_inst <= mem[if_addr_q[31:2]];
+                            else
+                                if_inst <= 32'h0;
+                            // IF 取指：資料與 valid 同拍
                             if_pc_read_data_valid <= 1'b1;
                         end else begin
-                            mem_data_rdata <= (data_addr_q < 4*INST_COUNT) ? mem[data_addr_q[31:2]] : 32'h0;
-                            mem_data_read_data_valid <= 1'b1;
+                            // Data 路：先完成資料，valid 下一拍在 READ_DONE 才送出，避免與 WB 同拍取到舊資料
+                            if (data_addr_q[31:2] < MEM_WORDS)
+                                mem_data_rdata <= mem[data_addr_q[31:2]];
+                            else
+                                mem_data_rdata <= 32'h0;
+                            // mem_data_read_data_valid 在 READ_DONE 產生
                         end
                         state <= READ_DONE;
                     end
@@ -231,14 +251,18 @@ module data_memory_multicycle(
 
                 READ_DONE: begin
                     if_busy      <= 1'b0;
-                    data_busy    <= 1'b0;
+                    // 保持 data_busy 到本拍結束，確保 mem_data_read_data_valid 與 WB 對齊同一指令
+                    data_busy    <= 1'b1;
                     last_was_mem <= ~serving_if;
                     state        <= IDLE;
 
                     // **關鍵修正**：只要這次服務的是 DATA，就在完成時
                     // 釋放 mem_req_issued，讓下一筆（可能仍是 lw）能被受理
-                    if (!serving_if)
+                    if (!serving_if) begin
+                        // Data 有效脈衝延後到 READ_DONE 這拍
+                        mem_data_read_data_valid <= 1'b1;
                         mem_req_issued <= 1'b0;
+                    end
                 end
 
                 default: state <= IDLE;
@@ -1016,7 +1040,8 @@ module stall_unit(
 
         if (data_busy) begin
             // === 全線 freeze ===
-            // 什麼都不動，控制保持
+            // 前段全部凍結，只在資料回來當拍允許 WB 寫入（確保 lw 仍能在正確時序提交）
+            mem_wb_Write          = mem_data_read_data_valid;
 
         end else if (hazard_stall) begin
             // === load-use hazard：前半段 freeze + 在 EX 插 NOP 控制 ===
@@ -1029,7 +1054,13 @@ module stall_unit(
             // === 正常流動（含 redirect 情況） ===
             id_ex_Write  = 1'b1;
             ex_mem_Write = 1'b1;
-            mem_wb_Write = 1'b1;
+
+            // 對於 Load，只有在資料有效拍才更新 WB；其他指令持續寫入
+            if (mem_data_MemRead) begin
+                mem_wb_Write = mem_data_read_data_valid;
+            end else begin
+                mem_wb_Write = 1'b1;
+            end
 
             if (redir_valid) begin
                 // 有 redirect → 立刻換 PC；本拍不寫 IF/ID

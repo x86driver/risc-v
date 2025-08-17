@@ -11,6 +11,11 @@ uart 可能也要跑
 riscv64-linux-gnu-gcc -march=rv32i -mabi=ilp32 -nostdlib -fno-pic -g -o lw.o lw.S
 ```
 
+objdump 這樣下才可以得到 jalr
+```bash
+riscv64-linux-gnu-objdump -D -M no-aliases a | less
+```
+
 auipc 要做的:
 - [x] 實作指令
 - [ ] 搬移 PC (包含 instruction memory)
@@ -299,8 +304,9 @@ run 8us
 docker run -it -v ~/pro/riscv:/pro/riscv ubuntu:24.04
 apt update
 apt install gcc-riscv64-linux-gnu less
+cd /pro/riscv
 riscv64-linux-gnu-gcc -march=rv32i -mabi=ilp32 -g -c -o lw.32 lw.S
-riscv64-linux-gnu-objdump -S lw.32|less
+riscv64-linux-gnu-objdump -M numeric -S lw.32|less
 ```
 
 vivado:

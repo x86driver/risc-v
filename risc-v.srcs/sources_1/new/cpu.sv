@@ -741,9 +741,20 @@ module ex_mem_pipeline(
             mem_pc <= ex_pc;
             mem_inst <= ex_inst;
             mem_Zero <= ex_Zero;
-            mem_alu_out <= ex_alu_out;
+            // 對於 JAL：把 ex_pc + 4 放在 ALU out，以便寫回 link 值
+            if (ex_inst[6:0] == 7'b1101111) begin
+                mem_alu_out <= ex_pc + 32'd4;
+            end else begin
+                mem_alu_out <= ex_alu_out;
+            end
             mem_read_data2 <= ex_read_data2;
-            mem_rd <= ex_rd;
+            // JAL 的目的暫存器為 inst[11:7]
+            mem_rd <= (ex_inst[6:0] == 7'b1101111) ? ex_inst[11:7] : ex_rd;
+
+            if (ex_inst[6:0] == 7'b1101111) begin
+                $display("DBG[JAL ex->mem] ex_pc=%08x ex_rd=%0d ex_RegWrite=%0d | mem_alu_out=%08x mem_rd=%0d",
+                         ex_pc, ex_rd, ex_RegWrite, mem_alu_out, mem_rd);
+            end
         end
     end
 
@@ -1471,7 +1482,7 @@ module riscv_cpu(
         .ex_Branch(ex_Branch),
         .ex_MemRead(ex_MemRead),
         .ex_MemWrite(ex_MemWrite),
-        .ex_pc(ex_pc + ex_imm32),
+        .ex_pc(ex_pc),
         .ex_inst(ex_inst),
         .ex_Zero(ex_Zero),
         .ex_alu_out(ex_alu_out),

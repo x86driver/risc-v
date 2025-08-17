@@ -4,6 +4,7 @@ all:
 test:
 	vvp ./simv +HEX=program/lw_prog.hex +CASE=lw
 	vvp ./simv +HEX=program/hazard_prog.hex +CASE=hazard
+	vvp ./simv +HEX=program/jal_prog.hex +CASE=jal
 
 clean:
 	rm -f simv

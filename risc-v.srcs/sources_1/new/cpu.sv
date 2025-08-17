@@ -128,13 +128,21 @@ module data_memory_multicycle(
             mem[8] = 32'h00730433; // add    x8, x6, x7  # x8 = 0x4021823b
             */
             // lw test
-
+/*
             mem[0] = 32'h0000_2083; // lw x1,0(x0)
             mem[1] = 32'h0040_2103; // lw x2,4(x0)
             mem[2] = 32'h0080_2183; // lw x3,8(x0)
             mem[3] = 32'h00c0_2203; // lw x4,12(x0)
             mem[4] = 32'h0100_2283; // lw x5,16(x0)
             mem[5] = 32'h0092_8313; // addi x6,x5,9
+*/
+            mem[0] = 32'h0000_0133; // _start: add x2, x0, x0
+            mem[1] = 32'h00a0_0093; // addi x1, x0, 10
+            mem[2] = 32'h0011_0133; // .L1: add x2, x2, x1
+            mem[3] = 32'hff08_0093; // addi x1, x1, -1
+            mem[4] = 32'hfe00_9ce3; // bne x1, x0, .L1
+            mem[5] = 32'h0020_2223; // sw x2, 4(x0)
+            mem[6] = 32'h0040_2183; // lw x3, 4(x0)
 
             // jal test
             /*

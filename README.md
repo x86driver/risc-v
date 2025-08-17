@@ -297,6 +297,8 @@ endmodule
 
 ```
 
+產生新測例的 golden 提交序列（若要）：
+vvp ./simv +HEX=program/<name>_prog.hex +CASE=<name> +DUMP_EXP=program/<name>.exp
 
 run 8us
 

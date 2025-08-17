@@ -137,7 +137,7 @@ module tb_riscv_cpu;
             end else if (case_name == "jal") begin
                 // JAL 改以快照檢查，不使用提交序列比對（避免因分支/管線時序導致早停）
                 exp_len = 0;
-            end else begin
+            end else if (case_name == "hazard") begin
                 // hazard default
                 exp_rd[exp_len]  = 5'd1; exp_val[exp_len] = 32'h0000_000a; exp_len++;
                 exp_rd[exp_len]  = 5'd2; exp_val[exp_len] = 32'h0000_0005; exp_len++;
@@ -148,6 +148,13 @@ module tb_riscv_cpu;
                 exp_rd[exp_len]  = 5'd6; exp_val[exp_len] = 32'h0000_0008; exp_len++;
                 exp_rd[exp_len]  = 5'd7; exp_val[exp_len] = 32'h4021_8233; exp_len++;
                 exp_rd[exp_len]  = 5'd8; exp_val[exp_len] = 32'h4021_823b; exp_len++;
+            end else if (case_name == "sum1to10") begin
+                // sum(1..to..10)
+                exp_rd[exp_len]  = 5'd1; exp_val[exp_len] = 32'h0000_0000; exp_len++;
+                exp_rd[exp_len]  = 5'd2; exp_val[exp_len] = 32'h0000_0037; exp_len++;
+            end else begin
+                $display("ERROR: unknown case: %0s", case_name);
+                $finish;
             end
         end
 

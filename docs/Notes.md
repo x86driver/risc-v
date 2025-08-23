@@ -112,6 +112,7 @@ RegWrite = 1 - 需要寫回返回地址
 Branch = 1 - 需要跳轉
 所以我們的修復方案實際上是通用的：任何需要寫回暫存器的跳轉指令都不應該在同一週期 flush 自己。
 
+MAX_COMMITS = 1024, 如果之後有更大的測試程式, 這裡要記得改
 
 ```systemverilog
 module memory_arbiter(

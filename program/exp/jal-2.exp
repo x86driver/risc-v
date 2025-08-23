@@ -1,0 +1,44 @@
+# Expected execution trace for jal-2 test
+# Format: register_number register_value
+
+# Test 1: JAL with different register destinations
+1 00000001   # x1 = 1 (initial marker)
+1 00000008   # x1 = return address (0x8) - overwrites previous value
+17 00000011  # x17 = 17 (in test1_target)
+2 00000002   # x2 = 2 (after return)
+
+# Test 2: JAL to x0 (return address discarded)
+3 00000003   # x3 = 3 (marker)
+18 00000012  # x18 = 18 (in test2_target) 
+4 00000004   # x4 = 4 (after return)
+
+# Test 3: Nested JAL calls - corrected order
+5 00000005   # x5 = 5 (marker)
+6 00000020   # x6 = return address (0x20) for outer call
+19 00000013  # x19 = 19 (in nested_outer)
+20 00000070  # x20 = return address (0x70) for inner call  
+22 00000016  # x22 = 22 (in nested_inner)
+21 00000015  # x21 = 21 (after inner returns)
+7 00000007   # x7 = 7 (after nested calls return)
+
+# Test 4: JAL immediately after branch
+8 0000000a   # x8 = 10
+9 0000000a   # x9 = 10
+10 00000034  # x10 = return address (0x34) 
+23 00000017  # x23 = 23 (in test4_target)
+11 0000000b  # x11 = 11 (after return)
+
+# Test 5: JAL with far target - corrected address
+12 0000003c  # x12 = return address (0x3C)
+26 0000001a  # x26 = 26 (in far_target)
+13 0000000d  # x13 = 13 (after return)
+
+# Test 6: JAL with data dependency
+14 0000000e  # x14 = 14
+15 0000000e  # x15 = x14 (dependency)
+15 0000004c  # x15 = return address (0x4C) - overwrites dependency result
+25 00000019  # x25 = 25 (in dep_target)
+16 00000010  # x16 = 16 (after return)
+
+# Final marker
+31 000003e7  # x31 = 999 (final marker)

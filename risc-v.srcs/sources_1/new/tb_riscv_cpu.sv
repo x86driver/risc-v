@@ -64,7 +64,7 @@ module tb_riscv_cpu;
 
     // scoreboard
     integer errors = 0;
-    localparam int MAX_COMMITS = 64;
+    localparam int MAX_COMMITS = 1024;
     reg  [4:0]  exp_rd  [0:MAX_COMMITS-1];
     reg  [31:0] exp_val [0:MAX_COMMITS-1];
     integer exp_len;

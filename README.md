@@ -92,6 +92,26 @@ old-risc-v 目前可參考這份
 接下來試試從 1 加到 10
 要加回去 readmemh
 
+08/23
+為什麼其他跳轉指令不需要特別處理
+1. BNE/BEQ 條件分支指令
+RegWrite = 0 - 不寫回任何暫存器
+Branch = 1 - 會觸發分支檢測
+無衝突：即使被 flush 也沒關係，因為它們不需要寫回
+2. AUIPC 指令
+RegWrite = 1 - 需要寫回暫存器
+Branch = 0 - 不會觸發分支檢測和 flush
+無衝突：不會 flush 自己
+3. JAL 指令（問題所在）
+RegWrite = 1 - 需要寫回暫存器（返回地址）
+Branch = 1 - 會觸發分支檢測和 flush
+衝突：會 flush 自己的 RegWrite 信號！
+4. 其他可能的跳轉指令（如 JALR）
+如果將來實現 JALR 指令，它也會有同樣的問題，因為：
+RegWrite = 1 - 需要寫回返回地址
+Branch = 1 - 需要跳轉
+所以我們的修復方案實際上是通用的：任何需要寫回暫存器的跳轉指令都不應該在同一週期 flush 自己。
+
 
 ```systemverilog
 module memory_arbiter(

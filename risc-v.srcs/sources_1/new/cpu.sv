@@ -924,7 +924,10 @@ module control_hazard_detection_unit(
                 pc_branch_target = ex_pc + ex_imm32;  // 計算好的目標位址
             end
             if_Flush         = 1'b1;              // flush IF 取指
-            id_Flush         = 1'b1;              // flush ID 解碼
+            // 對於 JAL 指令，不要在同一週期 flush ID，讓 JAL 先完成寫回
+            if (!is_jal) begin
+                id_Flush         = 1'b1;          // flush ID 解碼
+            end
         end
     end
 

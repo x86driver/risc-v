@@ -80,6 +80,18 @@ uart rx with interrupt 可以正確執行
 04/10
 hazard 測試 ok
 
+08/17
+可能要回退到兩塊記憶體的地方, 然後把測試程式搬進去
+old-risc-v 目前可參考這份 
+然後只保留 mux_id_MemRead 相關的 其他不需要
+可以問 AI 我這樣改 mux_id_MemRead 對嗎？
+好像先不用了, 直接 copy old-risc-v 那份
+
+08/21
+已經把所有舊檔案都 copy 回來了
+接下來試試從 1 加到 10
+要加回去 readmemh
+
 
 ```systemverilog
 module memory_arbiter(

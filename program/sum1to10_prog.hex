@@ -1,5 +1,0 @@
-00000133  // _start: add x2, x0, x0
-00a00093  // addi x1, x0, 10
-00110133  // .L1: add x2, x2, x1
-fff08093  // addi x1, x1, -1
-fe009ce3  // bne x1, x0, .L1

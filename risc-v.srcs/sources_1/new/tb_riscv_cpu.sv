@@ -225,7 +225,7 @@ module tb_riscv_cpu;
         end
 
         // 是否比對提交序列與是否提早結束
-        compare_commits = (exp_len > 0) && (case_name != "jal");
+        compare_commits = (exp_len > 0);
 
         // Wait reset released
         @(posedge btn_reset_n);
@@ -274,7 +274,7 @@ module tb_riscv_cpu;
                             end
                         end
                         seen = seen + 1;
-                        if (compare_commits) begin
+                        if (compare_commits && (case_name != "jal")) begin
                             if (seen == exp_len) begin
                                 stop_early = 1'b1;
                             end

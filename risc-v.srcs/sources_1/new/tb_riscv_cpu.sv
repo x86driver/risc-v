@@ -81,6 +81,7 @@ module tb_riscv_cpu;
     reg        last_commit_valid;
     reg [4:0]  last_commit_rd;
     reg [31:0] last_commit_val;
+    reg        commit_evt;
     reg        x3_seen;
     reg        compare_commits;
 
@@ -237,47 +238,47 @@ module tb_riscv_cpu;
         stop_early = 1'b0;
         for (cycles = 0; cycles < 20000; cycles = cycles + 1) begin
             @(negedge sys_clk_i);
-            if (dut.wb_RegWrite && (dut.wb_rd != 5'd0)) begin
+            // 以 mem_wb_Write 與 wb_RegWrite 作為提交事件，避免同值連續寫被過濾
+            commit_evt = (dut.mem_wb_Write && dut.wb_RegWrite && (dut.wb_rd != 5'd0));
+            if (commit_evt) begin
                 // 若是記憶體路徑，XOR 歸約為 X 代表尚未就緒 → 暫不記錄
                 if (dut.wb_MemtoReg && (^dut.wb_memory_read_data === 1'bx)) begin
                     // skip until data ready
                 end else begin
-                    // (rd,val) 變化才記錄，避免同值維持造成重複
-                    if (!last_commit_valid || (dut.wb_rd !== last_commit_rd) || (dut.wb_reg_write_data !== last_commit_val)) begin
-                        last_commit_valid <= 1'b1;
-                        last_commit_rd   <= dut.wb_rd;
-                        last_commit_val  <= dut.wb_reg_write_data;
+                    // 每次提交事件都記錄（允許連續同 rd、同 val 的合法寫回）
+                    last_commit_valid <= 1'b1;
+                    last_commit_rd   <= dut.wb_rd;
+                    last_commit_val  <= dut.wb_reg_write_data;
 
-                        $display("COMMIT[%0d]: rd=%0d val=%08x mem=%0d mem_valid=%0d", seen, dut.wb_rd, dut.wb_reg_write_data, dut.wb_MemtoReg, (^dut.wb_memory_read_data === 1'bx) ? 0 : 1);
-                        if (dump_fd != 0) begin
-                            $fwrite(dump_fd, "%0d %08x\n", dut.wb_rd, dut.wb_reg_write_data);
-                        end
-                        if (dut.wb_rd === 5'd3) x3_seen = 1'b1;
-                        if (forbid_rd_mask[dut.wb_rd]) begin
-                            $display("ERROR: forbidden rd write: rd=%0d val=%08x", dut.wb_rd, dut.wb_reg_write_data);
+                    $display("COMMIT[%0d]: rd=%0d val=%08x mem=%0d mem_valid=%0d", seen, dut.wb_rd, dut.wb_reg_write_data, dut.wb_MemtoReg, (^dut.wb_memory_read_data === 1'bx) ? 0 : 1);
+                    if (dump_fd != 0) begin
+                        $fwrite(dump_fd, "%0d %08x\n", dut.wb_rd, dut.wb_reg_write_data);
+                    end
+                    if (dut.wb_rd === 5'd3) x3_seen = 1'b1;
+                    if (forbid_rd_mask[dut.wb_rd]) begin
+                        $display("ERROR: forbidden rd write: rd=%0d val=%08x", dut.wb_rd, dut.wb_reg_write_data);
+                        errors = errors + 1;
+                    end
+
+                    if (compare_commits) begin
+                        if (seen >= exp_len) begin
+                            $display("ERROR: unexpected commit: rd=%0d val=%08x (more than expected %0d)", dut.wb_rd, dut.wb_reg_write_data, exp_len);
                             errors = errors + 1;
-                        end
-
-                        if (compare_commits) begin
-                            if (seen >= exp_len) begin
-                                $display("ERROR: unexpected commit: rd=%0d val=%08x (more than expected %0d)", dut.wb_rd, dut.wb_reg_write_data, exp_len);
+                        end else begin
+                            if (dut.wb_rd !== exp_rd[seen]) begin
+                                $display("ERROR: commit[%0d] rd mismatch: got=%0d exp=%0d", seen, dut.wb_rd, exp_rd[seen]);
                                 errors = errors + 1;
-                            end else begin
-                                if (dut.wb_rd !== exp_rd[seen]) begin
-                                    $display("ERROR: commit[%0d] rd mismatch: got=%0d exp=%0d", seen, dut.wb_rd, exp_rd[seen]);
-                                    errors = errors + 1;
-                                end
-                                if (dut.wb_reg_write_data !== exp_val[seen]) begin
-                                    $display("ERROR: commit[%0d] val mismatch: got=%08x exp=%08x", seen, dut.wb_reg_write_data, exp_val[seen]);
-                                    errors = errors + 1;
-                                end
+                            end
+                            if (dut.wb_reg_write_data !== exp_val[seen]) begin
+                                $display("ERROR: commit[%0d] val mismatch: got=%08x exp=%08x", seen, dut.wb_reg_write_data, exp_val[seen]);
+                                errors = errors + 1;
                             end
                         end
-                        seen = seen + 1;
-                        if (compare_commits && (case_name != "jal")) begin
-                            if (seen == exp_len) begin
-                                stop_early = 1'b1;
-                            end
+                    end
+                    seen = seen + 1;
+                    if (compare_commits && (case_name != "jal")) begin
+                        if (seen == exp_len) begin
+                            stop_early = 1'b1;
                         end
                     end
                 end

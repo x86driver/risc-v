@@ -16,6 +16,7 @@
 | ADDI | 0010011 | 000 | 立即數加法：rd = rs1 + imm |
 | ANDI | 0010011 | 111 | 立即數位元 AND：rd = rs1 & imm |
 | ORI  | 0010011 | 110 | 立即數位元 OR：rd = rs1 \| imm |
+| JALR | 1100111 | 000 | rd = PC + 4; PC = rs1 + imm |
 
 ### Load/Store 指令
 | 指令 | 操作碼 | funct3 | 說明 |

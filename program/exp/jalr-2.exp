@@ -1,0 +1,29 @@
+# JAL/JALR 嚴格測試程式期望值 - 修正版
+# 如果 CPU 正確實現，應該看到以下寄存器寫入序列
+
+1 00000001    # x1 = 1 (addi x1, x0, 1)
+2 00000008    # x2 = PC+4 (jal x2, test_jal 的返回地址)
+3 00000003    # x3 = 3 (addi x3, x0, 3 在 test_jal)
+4 00000010    # x4 = PC (auipc x4, 0)
+4 00000020    # x4 = PC + 12 (addi x4, x4, 12)
+5 0000001c    # x5 = PC+4 (jalr x5, x4, 0 的返回地址)
+6 00000006    # x6 = 6 (addi x6, x0, 6 在 test_jalr)
+
+7 00000024    # x7 = PC (auipc x7, 0)
+7 00000038    # x7 = PC + 20 (addi x7, x7, 20)
+8 00000030    # x8 = PC+4 (jalr x8, x7, -4 的返回地址)
+9 00000009    # x9 = 9 (addi x9, x0, 9 在 test_jalr_offset)
+
+10 0000000a   # x10 = 10 (addi x10, x0, 10 在 test_jal_x0)
+
+11 00000044   # x11 = PC (auipc x11, 0)
+11 00000054   # x11 = PC + 16 (addi x11, x11, 16)
+12 0000000c   # x12 = 12 (addi x12, x0, 12 在 test_jalr_x0)
+
+# 測試6: 連續跳躍指令測試 (測試 pipeline flush)
+13 0000005c   # x13 = PC+4 (jal x13, chain1 的返回地址)
+14 0000000e   # x14 = 14 (addi x14, x0, 14 在 chain1)
+15 0000006c   # x15 = PC+4 (jal x15, chain2 的返回地址)
+16 00000010   # x16 = 16 (addi x16, x0, 16 在 chain2)
+17 00000078   # x17 = PC+4 (jalr x17, x13, 0 的返回地址)
+18 00000012   # x18 = 18 (addi x18, x0, 18 在 return_point)

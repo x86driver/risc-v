@@ -448,6 +448,18 @@ module control_unit(
                 isSub = 0;
                 isValid = 1;
             end
+            7'b1100111: begin // jalr
+                ALUSrc = 1;
+                ALUSrcA_sel = 2'b01;
+                MemtoReg = 0;
+                RegWrite = 1;
+                MemRead = 0;
+                MemWrite = 0;
+                Branch = 1;
+                ALUOp = 2'b00; // use add
+                isSub = 0;
+                isValid = 1;
+            end
             default: begin
                 ALUSrc = 0;
                 ALUSrcA_sel = 2'b00;
@@ -483,6 +495,8 @@ module imm32_gen(
             7'b0010111: // auipc
                 imm32 = {inst[31:12], 12'b0};
             7'b1101111: // jal
+                imm32 = 32'h4;
+            7'b1100111: // jalr
                 imm32 = 32'h4;
             default:
                 imm32 = 32'h0;
@@ -883,6 +897,7 @@ module control_hazard_detection_unit(
 
     logic branch_taken = 0;
     logic is_jal = 0;
+    logic is_jalr = 0;
 
     always_comb begin
         branch_taken      = 1'b0;
@@ -890,6 +905,7 @@ module control_hazard_detection_unit(
         id_Flush          = 1'b0;
         pc_branch_sel     = 1'b0;
         is_jal            = 1'b0;
+        is_jalr           = 1'b0;
         pc_branch_target  = ex_pc;
         case (ex_inst[6:0])
             7'b1100011: begin // branch
@@ -912,6 +928,10 @@ module control_hazard_detection_unit(
                 branch_taken = 1;
                 is_jal = 1;
             end
+            7'b1100111: begin // jalr
+                branch_taken = 1;
+                is_jalr = 1;
+            end
             default: begin
             end
         endcase
@@ -920,12 +940,14 @@ module control_hazard_detection_unit(
             pc_branch_sel    = 1'b1;              // pc mux 選 branch
             if (is_jal) begin
                 pc_branch_target = ex_pc + {{12{ex_inst[31]}}, ex_inst[19:12], ex_inst[20], ex_inst[30:21], 1'b0};
+            end else if (is_jalr) begin
+                pc_branch_target = ex_mux3to1_alu_a_out + {{20{ex_inst[31]}}, ex_inst[31:20]};
             end else begin
                 pc_branch_target = ex_pc + ex_imm32;  // 計算好的目標位址
             end
             if_Flush         = 1'b1;              // flush IF 取指
-            // 對於 JAL 指令，不要在同一週期 flush ID，讓 JAL 先完成寫回
-            if (!is_jal) begin
+            // 對於 JAL, JALR 指令，不要在同一週期 flush ID，讓 JAL 先完成寫回
+            if (!is_jal && !is_jalr) begin
                 id_Flush         = 1'b1;          // flush ID 解碼
             end
         end

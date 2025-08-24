@@ -518,7 +518,7 @@ module program_counter(
             pc_current <= 0;
         end else begin
             if (PCWrite) begin
-                pc_current <= pc_next;
+                pc_current <= {pc_next[31:2], 2'b00};
             end
         end
     end
@@ -941,7 +941,7 @@ module control_hazard_detection_unit(
             if (is_jal) begin
                 pc_branch_target = ex_pc + {{12{ex_inst[31]}}, ex_inst[19:12], ex_inst[20], ex_inst[30:21], 1'b0};
             end else if (is_jalr) begin
-                pc_branch_target = ex_mux3to1_alu_a_out + {{20{ex_inst[31]}}, ex_inst[31:20]};
+                pc_branch_target = (ex_mux3to1_alu_a_out + {{20{ex_inst[31]}}, ex_inst[31:20]}) & 32'hffffffe;
             end else begin
                 pc_branch_target = ex_pc + ex_imm32;  // 計算好的目標位址
             end

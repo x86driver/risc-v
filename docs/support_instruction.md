@@ -9,6 +9,7 @@
 | SUB  | 0110011 | 000 | 0100000 | 暫存器減法：rd = rs1 - rs2 |
 | AND  | 0110011 | 111 | 0000000 | 暫存器位元 AND：rd = rs1 & rs2 |
 | OR   | 0110011 | 110 | 0000000 | 暫存器位元 OR：rd = rs1 \| rs2 |
+| XOR  | 0110011 | 100 | 0000000 | 暫存器 XOR: rd = rs1 ^ rs2 |
 
 ### I-Type 指令（立即數運算）
 | 指令 | 操作碼 | funct3 | 說明 |
@@ -68,3 +69,42 @@
 - 支援 32 個通用暫存器（x0-x31），其中 x0 固定為 0
 - 採用 5 階段 pipeline：IF → ID → EX → MEM → WB
 - 實作了 data forwarding 和 hazard detection 機制
+
+## 尚未支援的指令
+
+sll
+srl
+sra
+slt
+sltu
+
+xori
+slli
+srli
+srai
+slti
+sltiu
+
+lb
+lh
+lbu
+lhu
+
+sb
+sh
+
+blt
+bge
+bltu
+bgeu
+
+ecall
+ebreak
+fence
+fence.i
+csrrw
+csrrs
+csrrc
+csrrwi
+csrrsi
+csrrci

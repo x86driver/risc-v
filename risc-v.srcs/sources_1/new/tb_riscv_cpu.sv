@@ -84,6 +84,10 @@ module tb_riscv_cpu;
     reg        commit_evt;
     reg        x3_seen;
     reg        compare_commits;
+    // 輸出詳略控制
+    bit        quiet;
+    bit        verbose;
+    bit        summary_only;
 
     // wait and check result (commit-sequence scoreboard)
     initial begin
@@ -92,6 +96,11 @@ module tb_riscv_cpu;
         integer cycles;
         bit stop_early;
         string case_name;
+
+        // 解析輸出詳略旗標
+        quiet = $test$plusargs("QUIET");
+        verbose = $test$plusargs("VERBOSE");
+        summary_only = $test$plusargs("SUMMARY");
 
         if (!$value$plusargs("CASE=%s", case_name)) begin
             case_name = "hazard"; // default
@@ -103,7 +112,7 @@ module tb_riscv_cpu;
             integer fd;
             fd = $fopen(exp_file, "r");
             if (fd == 0) begin
-                $display("[exp] WARN: cannot open %0s", exp_file);
+                if (!quiet) $display("[exp] WARN: cannot open %0s", exp_file);
             end else begin
                 while (!$feof(fd) && exp_len < MAX_COMMITS) begin
                     int rd_tmp;
@@ -124,7 +133,7 @@ module tb_riscv_cpu;
                     end
                 end
                 $fclose(fd);
-                $display("[exp] Loaded %0d entries from %0s", exp_len, exp_file);
+                if (!quiet) $display("[exp] Loaded %0d entries from %0s", exp_len, exp_file);
             end
         end else begin
             if (case_name == "lw") begin
@@ -154,7 +163,7 @@ module tb_riscv_cpu;
                 exp_rd[exp_len]  = 5'd1; exp_val[exp_len] = 32'h0000_0000; exp_len++;
                 exp_rd[exp_len]  = 5'd2; exp_val[exp_len] = 32'h0000_0037; exp_len++;
             end else begin
-                $display("ERROR: unknown case: %0s", case_name);
+                if (!quiet) $display("ERROR: unknown case: %0s", case_name);
                 $finish;
             end
         end
@@ -221,7 +230,7 @@ module tb_riscv_cpu;
         if ($value$plusargs("DUMP_EXP=%s", dump_exp_file)) begin
             dump_fd = $fopen(dump_exp_file, "w");
             if (dump_fd == 0) begin
-                $display("[exp] WARN: cannot open %0s for write", dump_exp_file);
+                if (!quiet) $display("[exp] WARN: cannot open %0s for write", dump_exp_file);
             end
         end
 
@@ -250,27 +259,27 @@ module tb_riscv_cpu;
                     last_commit_rd   <= dut.wb_rd;
                     last_commit_val  <= dut.wb_reg_write_data;
 
-                    $display("COMMIT[%0d]: rd=%0d val=%08x mem=%0d mem_valid=%0d", seen, dut.wb_rd, dut.wb_reg_write_data, dut.wb_MemtoReg, (^dut.wb_memory_read_data === 1'bx) ? 0 : 1);
+                    if (!quiet || verbose) $display("COMMIT[%0d]: rd=%0d val=%08x mem=%0d mem_valid=%0d", seen, dut.wb_rd, dut.wb_reg_write_data, dut.wb_MemtoReg, (^dut.wb_memory_read_data === 1'bx) ? 0 : 1);
                     if (dump_fd != 0) begin
                         $fwrite(dump_fd, "%0d %08x\n", dut.wb_rd, dut.wb_reg_write_data);
                     end
                     if (dut.wb_rd === 5'd3) x3_seen = 1'b1;
                     if (forbid_rd_mask[dut.wb_rd]) begin
-                        $display("ERROR: forbidden rd write: rd=%0d val=%08x", dut.wb_rd, dut.wb_reg_write_data);
+                        if (!quiet) $display("ERROR: forbidden rd write: rd=%0d val=%08x", dut.wb_rd, dut.wb_reg_write_data);
                         errors = errors + 1;
                     end
 
                     if (compare_commits) begin
                         if (seen >= exp_len) begin
-                            $display("ERROR: unexpected commit: rd=%0d val=%08x (more than expected %0d)", dut.wb_rd, dut.wb_reg_write_data, exp_len);
+                            if (!quiet) $display("ERROR: unexpected commit: rd=%0d val=%08x (more than expected %0d)", dut.wb_rd, dut.wb_reg_write_data, exp_len);
                             errors = errors + 1;
                         end else begin
                             if (dut.wb_rd !== exp_rd[seen]) begin
-                                $display("ERROR: commit[%0d] rd mismatch: got=%0d exp=%0d", seen, dut.wb_rd, exp_rd[seen]);
+                                if (!quiet) $display("ERROR: commit[%0d] rd mismatch: got=%0d exp=%0d", seen, dut.wb_rd, exp_rd[seen]);
                                 errors = errors + 1;
                             end
                             if (dut.wb_reg_write_data !== exp_val[seen]) begin
-                                $display("ERROR: commit[%0d] val mismatch: got=%08x exp=%08x", seen, dut.wb_reg_write_data, exp_val[seen]);
+                                if (!quiet) $display("ERROR: commit[%0d] val mismatch: got=%08x exp=%08x", seen, dut.wb_reg_write_data, exp_val[seen]);
                                 errors = errors + 1;
                             end
                         end
@@ -291,12 +300,14 @@ module tb_riscv_cpu;
         // allow pipeline drain a couple cycles
         repeat (2) @(negedge sys_clk_i);
 
-        $display("\n--- Register Snapshot (%0s) ---", case_name);
-        $display("x1=%h x2=%h x3=%h x4=%h", dut.reg_file_0.registers[1], dut.reg_file_0.registers[2], dut.reg_file_0.registers[3], dut.reg_file_0.registers[4]);
-        $display("x5=%h x6=%h x7=%h x8=%h", dut.reg_file_0.registers[5], dut.reg_file_0.registers[6], dut.reg_file_0.registers[7], dut.reg_file_0.registers[8]);
+        if (!quiet) begin
+            $display("\n--- Register Snapshot (%0s) ---", case_name);
+            $display("x1=%h x2=%h x3=%h x4=%h", dut.reg_file_0.registers[1], dut.reg_file_0.registers[2], dut.reg_file_0.registers[3], dut.reg_file_0.registers[4]);
+            $display("x5=%h x6=%h x7=%h x8=%h", dut.reg_file_0.registers[5], dut.reg_file_0.registers[6], dut.reg_file_0.registers[7], dut.reg_file_0.registers[8]);
+        end
 
         if (compare_commits && (seen < exp_len)) begin
-            $display("ERROR: only saw %0d commits, expected %0d", seen, exp_len);
+            if (!quiet) $display("ERROR: only saw %0d commits, expected %0d", seen, exp_len);
             errors = errors + 1;
         end
         // 依需求檢查指定暫存器最後值
@@ -307,16 +318,24 @@ module tb_riscv_cpu;
                 idx_chk = expect_reg_idx_q[i];
                 val_chk = expect_reg_val_q[i];
                 if (dut.reg_file_0.registers[idx_chk] !== val_chk) begin
-                    $display("ERROR: reg x%0d mismatch: got=%08x exp=%08x", idx_chk, dut.reg_file_0.registers[idx_chk], val_chk);
+                    if (!quiet) $display("ERROR: reg x%0d mismatch: got=%08x exp=%08x", idx_chk, dut.reg_file_0.registers[idx_chk], val_chk);
                     errors = errors + 1;
                 end
             end
         end
 
+        if (!quiet) begin
+            if (errors == 0) begin
+                $display("\nTEST PASSED\n");
+            end else begin
+                $display("\nTEST FAILED with %0d error(s)\n", errors);
+            end
+        end
+        // 一行總結供 Makefile 抽取
         if (errors == 0) begin
-            $display("\nTEST PASSED\n");
+            $display("RESULT %0s PASS", case_name);
         end else begin
-            $display("\nTEST FAILED with %0d error(s)\n", errors);
+            $display("RESULT %0s FAIL %0d", case_name, errors);
         end
         if (dump_fd != 0) begin
             $fclose(dump_fd);

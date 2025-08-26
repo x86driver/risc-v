@@ -21,6 +21,7 @@ parameter SEL_LEDS = 2'd2;
 module alu_control(
     input logic [1:0] aluop,
     input logic isSub,
+    input logic inst30,
     input logic [2:0] funct3,
     output logic [3:0] alu_ctrl
 );
@@ -35,7 +36,7 @@ module alu_control(
             6'b10_0_110: alu_ctrl = 4'b0001; // or
             6'b10_0_100: alu_ctrl = 4'b0100; // xor
             6'b10_0_001: alu_ctrl = 4'b0101; // sll
-            6'b10_0_101: alu_ctrl = 4'b0111; // srl
+            6'b10_0_101: alu_ctrl = inst30 ? 4'b0011 : 4'b0111; // sra/srl
             default:   alu_ctrl = 4'b0000;
         endcase
     end
@@ -57,6 +58,7 @@ module alu(
             0: alu_out = A & B;
             1: alu_out = A | B;
             2: alu_out = A + B;
+            3: alu_out = $signed(A) >>> B[4:0];
             4: alu_out = A ^ B;
             5: alu_out = A << B[4:0];
             6: alu_out = A - B;
@@ -1539,6 +1541,7 @@ module riscv_cpu(
     alu_control alu_control_0(
         .aluop(ex_ALUOp),
         .isSub(ex_isSub),
+        .inst30(ex_inst[30]),
         .funct3(ex_funct3),
         .alu_ctrl(alu_ctrl)
     );

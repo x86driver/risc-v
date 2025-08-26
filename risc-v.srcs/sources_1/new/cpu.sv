@@ -35,6 +35,7 @@ module alu_control(
             6'b10_0_110: alu_ctrl = 4'b0001; // or
             6'b10_0_100: alu_ctrl = 4'b0100; // xor
             6'b10_0_001: alu_ctrl = 4'b0101; // sll
+            6'b10_0_101: alu_ctrl = 4'b0111; // srl
             default:   alu_ctrl = 4'b0000;
         endcase
     end
@@ -59,6 +60,7 @@ module alu(
             4: alu_out = A ^ B;
             5: alu_out = A << B[4:0];
             6: alu_out = A - B;
+            7: alu_out = A >> B[4:0];
             default: alu_out = 0;
         endcase
     end

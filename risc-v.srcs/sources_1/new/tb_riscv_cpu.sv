@@ -118,13 +118,22 @@ module tb_riscv_cpu;
                     int rd_tmp;
                     logic [31:0] val_tmp;
                     int r;
-                    r = $fscanf(fd, "%d %h\n", rd_tmp, val_tmp);
+                    integer ch;
+
+                    // 先嘗試讀取兩個值
+                    r = $fscanf(fd, "%d %h", rd_tmp, val_tmp);
                     if (r == 2) begin
+                        // 成功讀取兩個值，記錄它們
                         exp_rd[exp_len]  = rd_tmp[4:0];
                         exp_val[exp_len] = val_tmp;
                         exp_len++;
+                        // 讀取剩餘行（可能包含註解）
+                        ch = $fgetc(fd);
+                        while (ch != 10 && ch != -1) begin
+                            ch = $fgetc(fd);
+                        end
                     end else begin
-                        integer ch;
+                        // 無法讀取兩個值，跳過整行
                         ch = 0;
                         // consume until end-of-line or EOF to avoid infinite loop
                         while (ch != 10 && ch != -1) begin

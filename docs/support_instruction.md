@@ -14,6 +14,7 @@
 | SRL  | 0110011 | 101 | 0000000 | 暫存器 Shift Right Logical: rd = rs1 >> rs2[4:0] |
 | SRA  | 0110011 | 101 | 0100000 | 暫存器 Shift Right Arith: rd = rs1 >> rs2[4:0] msb-extends |
 | SLT  | 0110011 | 010 | 0000000 | 暫存器 Set Less Than: rd = (rs1 < rs2) ? 1 : 0 |
+| SLTU | 0110011 | 011 | 0000000 | 暫存去 Set Less Than (U): rd = (rs1 < rs2) ? 1 : 0 zero-extends |
 
 ### I-Type 指令（立即數運算）
 | 指令 | 操作碼 | funct3 | 說明 |
@@ -75,8 +76,6 @@
 - 實作了 data forwarding 和 hazard detection 機制
 
 ## 尚未支援的指令
-
-sltu
 
 xori
 slli

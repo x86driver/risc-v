@@ -37,6 +37,7 @@ module alu_control(
             6'b10_0_100: alu_ctrl = 4'b0100; // xor
             6'b10_0_001: alu_ctrl = 4'b0101; // sll
             6'b10_0_101: alu_ctrl = inst30 ? 4'b0011 : 4'b0111; // sra/srl
+            6'b10_0_010: alu_ctrl = 4'b1000; // slt
             default:   alu_ctrl = 4'b0000;
         endcase
     end
@@ -63,6 +64,7 @@ module alu(
             5: alu_out = A << B[4:0];
             6: alu_out = A - B;
             7: alu_out = A >> B[4:0];
+            8: alu_out = ($signed(A) < $signed(B)) ? 1 : 0;
             default: alu_out = 0;
         endcase
     end

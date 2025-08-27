@@ -13,6 +13,7 @@
 | SLL  | 0110011 | 001 | 0000000 | 暫存器 Shift Left Logical: rd = rs1 << rs2[4:0] |
 | SRL  | 0110011 | 101 | 0000000 | 暫存器 Shift Right Logical: rd = rs1 >> rs2[4:0] |
 | SRA  | 0110011 | 101 | 0100000 | 暫存器 Shift Right Arith: rd = rs1 >> rs2[4:0] msb-extends |
+| SLT  | 0110011 | 010 | 0000000 | 暫存器 Set Less Than: rd = (rs1 < rs2) ? 1 : 0 |
 
 ### I-Type 指令（立即數運算）
 | 指令 | 操作碼 | funct3 | 說明 |
@@ -75,7 +76,6 @@
 
 ## 尚未支援的指令
 
-slt
 sltu
 
 xori

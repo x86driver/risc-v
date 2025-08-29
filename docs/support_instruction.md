@@ -25,6 +25,7 @@
 | ORI  | 0010011 | 110 | 立即數位元 OR：rd = rs1 \| imm |
 | SLLI | 0010011 | 001 | 立即數 Shift Left Logical Imm: rd = rs1 << imm[0:4] imm[5:11]=0x00 |
 | SRLI | 0010011 | 101 | 立即數 Shift Right Logical Imm: rd = rs1 >> imm[0:4] imm[5:11]=0x00 |
+| SRAI | 0010011 | 101 | 立即數 Shift Right Arith Imm: rd = rs1 >> imm[0:4] imm[5:11]=0x20 msb-extends|
 | JALR | 1100111 | 000 | rd = PC + 4; PC = rs1 + imm |
 
 ### Load/Store 指令
@@ -80,7 +81,6 @@
 
 ## 尚未支援的指令
 
-srai
 slti
 sltiu
 

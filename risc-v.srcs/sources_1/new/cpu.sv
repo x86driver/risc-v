@@ -254,7 +254,13 @@ module data_memory_multicycle(
                 end
 
                 WRITE_DATA: begin
-                    mem[address[31:2]] <= write_data;
+                    if (funct3 == 3'b000) begin // sb
+                        mem[address[31:2]][address[1:0]*8 +: 8] <= write_data[7:0];
+                    end else if (funct3 == 3'b001) begin // sh
+                        mem[address[31:2]][address[1]*16 +: 16] <= write_data[15:0];
+                    end else if (funct3 == 3'b010) begin // sw
+                        mem[address[31:2]] <= write_data;
+                    end
                     state <= WRITE_RESP;
                 end
 

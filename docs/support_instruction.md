@@ -38,6 +38,8 @@
 | LW   | 0000011 | 010 | 載入字組：rd = mem[rs1 + imm] |
 | LBU  | 0000011 | 100 | Load Byte (U): rd = M[rs1+imm][0:7] zero-extends |
 | LHU  | 0000011 | 101 | Load Half (U): rd = M[rs1+imm][0:15] zero-extends |
+| SB   | 0100011 | 000 | Store Byte: M[rs1+imm][0:7] = rs2[0:7] |
+| SH   | 0100011 | 001 | Store Half: M[rs1+imm][0:15] = rs2[0:15] |
 | SW   | 0100011 | 010 | 儲存字組：mem[rs1 + imm] = rs2 |
 
 ### 分支指令
@@ -86,9 +88,6 @@
 - 實作了 data forwarding 和 hazard detection 機制
 
 ## 尚未支援的指令
-
-sb
-sh
 
 blt
 bge

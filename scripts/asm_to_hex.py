@@ -193,10 +193,12 @@ def main() -> None:
         # Compile
         gcc_cmd = [
             "riscv64-elf-gcc",
+            "-nostdlib",
+            "-Wl,-Ttext=0",
+            "-Wl,--no-relax",
             "-march=rv32i",
             "-mabi=ilp32",
             "-g",
-            "-c",
             "-o",
             str(obj),
             str(src),

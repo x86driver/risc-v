@@ -151,3 +151,33 @@ jalr
 ===============
 
 slli, srli, srai 的 imm[5:11] 應該要檢查是否為合法指令
+
+```verilog
+                    if (funct3 == 3'b000) begin // lb
+                        read_data <= {{24{mem[address[31:2]][address[1:0]*8+7]}}, mem[address[31:2]][address[1:0]*8+:8]};
+                    end else if (funct3 == 3'b001) begin // lh
+                        read_data <= {{16{mem[address[31:2]][15]}}, mem[address[31:2]][15:0]};
+                    end else if (funct3 == 3'b010) begin // lw
+                        read_data <= mem[address[31:2]];
+                    end else if (funct3 == 3'b100) begin // lbu
+                        read_data <= {{24{1'b0}}, mem[address[31:2]][7:0]};
+                    end else if (funct3 == 3'b101) begin // lhu
+                        read_data <= {{16{1'b0}}, mem[address[31:2]][15:0]};
+                    end else begin
+                        read_data <= mem[address[31:2]];
+                    end
+```
+
+試試看直接輸出 read_data <= mem[1]; 沒效
+
+這樣也ok
+    lw   x2, 1(x1)
+    lw   x2, 5(x1)
+    lw   x2, 9(x1)
+
+別求一步到位
+
+09/16
+===============
+
+1. 在模組間的 wire 一定要記得宣告, 否則就算 compile 能過, 他預設只會給你 1 bit 的大小

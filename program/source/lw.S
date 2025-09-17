@@ -1,7 +1,7 @@
 _start:
     lw x1, 0(x0)
-    lw x2, 4(x0)
-    lw x3, 8(x0)
-    lw x4, 12(x0)
-    lw x5, 16(x0)
-    add x6, x5, x4
+    lw x1, 4(x0)
+    lw x1, 8(x0)
+    lw x1, 12(x0)
+    lw x1, 16(x0)
+    # add x6, x5, x4

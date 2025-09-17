@@ -1,0 +1,45 @@
+1 00000014  # auipc x1, %pcrel_hi(test_data)
+1 00000004  # addi  x1, x1, %pcrel_lo(start_test,test_data)
+
+# lw
+2 ff807f00  # lw x2,0(x1)
+3 78563412  # lw x3,4(x1)
+4 00000000  # lw x4,8(x1)
+5 ffffffff  # lw x5,12(x1)
+
+# lb (signed)
+6 00000000  # lb x6,0(x1)
+6 0000007f  # lb x6,1(x1)
+6 ffffff80  # lb x6,2(x1)
+6 ffffffff  # lb x6,3(x1)
+
+# lbu (unsigned)
+7 00000000  # lbu x7,0(x1)
+7 0000007f  # lbu x7,1(x1)
+7 00000080  # lbu x7,2(x1)
+7 000000ff  # lbu x7,3(x1)
+
+# addi x8, x1, 4
+8 00000008
+
+# lb on next block (signed)
+9 00000012  # lb x9,0(x8)
+9 00000034  # lb x9,1(x8)
+9 00000056  # lb x9,2(x8)
+9 00000078  # lb x9,3(x8)
+
+# cross-boundary bytes
+10 00000078 # lbu x10,7(x1)
+11 00000000 # lbu x11,8(x1)
+
+# lh (signed)
+12 00007f00 # lh x12,0(x1)
+12 ffffff80 # lh x12,2(x1)
+13 00003412 # lh x13,4(x1)
+13 00007856 # lh x13,6(x1)
+
+# lhu (unsigned)
+14 00007f00 # lhu x14,0(x1)
+14 0000ff80 # lhu x14,2(x1)
+15 00003412 # lhu x15,4(x1)
+15 00007856 # lhu x15,6(x1)

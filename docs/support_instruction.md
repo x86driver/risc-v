@@ -33,7 +33,11 @@
 ### Load/Store 指令
 | 指令 | 操作碼 | funct3 | 說明 |
 |------|--------|--------|------|
+| LB   | 0000011 | 000 | Load Byte: rd = M[rs1+imm][0:7] |
+| LH   | 0000011 | 001 | Load Half: rd = M[rs1+imm][0:15] |
 | LW   | 0000011 | 010 | 載入字組：rd = mem[rs1 + imm] |
+| LBU  | 0000011 | 100 | Load Byte (U): rd = M[rs1+imm][0:7] zero-extends |
+| LHU  | 0000011 | 101 | Load Half (U): rd = M[rs1+imm][0:15] zero-extends |
 | SW   | 0100011 | 010 | 儲存字組：mem[rs1 + imm] = rs2 |
 
 ### 分支指令
@@ -82,11 +86,6 @@
 - 實作了 data forwarding 和 hazard detection 機制
 
 ## 尚未支援的指令
-
-lb
-lh
-lbu
-lhu
 
 sb
 sh

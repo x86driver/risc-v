@@ -187,6 +187,7 @@ module data_memory_multicycle(
     input logic rst_n,
     input logic MemRead,
     input logic MemWrite,
+    input logic [2:0] funct3,
     input logic [31:0] address,
     input logic [31:0] write_data,
     output logic read_data_valid,
@@ -272,7 +273,27 @@ module data_memory_multicycle(
                 end
 
                 READ_DATA: begin
-                    read_data <= mem[address[31:2]];
+                    // 使用位址位移擷取對應 byte/halfword（小端序）
+                    logic [31:0] word;
+                    logic [7:0]  byte_sel;
+                    logic [15:0] half_sel;
+                    word = mem[address[31:2]];
+                    byte_sel = word[address[1:0]*8 +: 8];
+                    half_sel = address[1] ? word[31:16] : word[15:0];
+
+                    if (funct3 == 3'b000) begin // lb
+                        read_data <= {{24{byte_sel[7]}}, byte_sel};
+                    end else if (funct3 == 3'b001) begin // lh
+                        read_data <= {{16{half_sel[15]}}, half_sel};
+                    end else if (funct3 == 3'b010) begin // lw
+                        read_data <= word;
+                    end else if (funct3 == 3'b100) begin // lbu
+                        read_data <= {24'b0, byte_sel};
+                    end else if (funct3 == 3'b101) begin // lhu
+                        read_data <= {16'b0, half_sel};
+                    end else begin
+                        read_data <= word;
+                    end
                     read_data_valid <= 1;
                     state <= READ_DONE;
                 end
@@ -359,7 +380,9 @@ module control_unit(
     output logic Branch,
     output logic [1:0] ALUOp,
     output logic isSub,
-    output logic isValid
+    output logic isValid,
+    output logic [4:0] decoded_rs1,
+    output logic [4:0] decoded_rs2
 );
 
     always_comb begin
@@ -375,6 +398,8 @@ module control_unit(
                 ALUOp = 2'b10;
                 isSub = ((inst[14:12] == 3'b000) && (inst[30] == 1'b1)) ? 1 : 0; // 避免誤判 sra
                 isValid = 1;
+                decoded_rs1 = inst[19:15];
+                decoded_rs2 = inst[24:20];
             end
             7'b0010011: begin // I-format
                 ALUSrc = 1;
@@ -387,6 +412,8 @@ module control_unit(
                 ALUOp = 2'b10;
                 isSub = 0;
                 isValid = 1;
+                decoded_rs1 = inst[19:15];
+                decoded_rs2 = 0;
             end
             7'b0000011: begin // lw
                 ALUSrc = 1;
@@ -399,6 +426,8 @@ module control_unit(
                 ALUOp = 2'b00;
                 isSub = 0;
                 isValid = 1;
+                decoded_rs1 = inst[19:15];
+                decoded_rs2 = 0;
             end
             7'b0100011: begin // sw
                 ALUSrc = 1;
@@ -411,6 +440,8 @@ module control_unit(
                 ALUOp = 2'b00;
                 isSub = 0;
                 isValid = 1;
+                decoded_rs1 = inst[19:15];
+                decoded_rs2 = inst[24:20];
             end
             7'b1100011: begin // beq
                 ALUSrc = 0;
@@ -423,6 +454,8 @@ module control_unit(
                 ALUOp = 2'b01;
                 isSub = 1;
                 isValid = 1;
+                decoded_rs1 = inst[19:15];
+                decoded_rs2 = inst[24:20];
             end
             7'b0110111: begin // lui
                 ALUSrc = 1;
@@ -435,6 +468,8 @@ module control_unit(
                 ALUOp = 2'b00; // use add
                 isSub = 0;
                 isValid = 1;
+                decoded_rs1 = 0;
+                decoded_rs2 = 0;
             end
             7'b0010111: begin // auipc
                 ALUSrc = 1;
@@ -447,6 +482,8 @@ module control_unit(
                 ALUOp = 2'b00; // use add
                 isSub = 0;
                 isValid = 1;
+                decoded_rs1 = 0;
+                decoded_rs2 = 0;
             end
             7'b1101111: begin // jal
                 ALUSrc = 1;
@@ -459,6 +496,8 @@ module control_unit(
                 ALUOp = 2'b00; // use add
                 isSub = 0;
                 isValid = 1;
+                decoded_rs1 = 0;
+                decoded_rs2 = 0;
             end
             7'b1100111: begin // jalr
                 ALUSrc = 1;
@@ -471,6 +510,8 @@ module control_unit(
                 ALUOp = 2'b00; // use add
                 isSub = 0;
                 isValid = 1;
+                decoded_rs1 = inst[19:15];
+                decoded_rs2 = 0;
             end
             default: begin
                 ALUSrc = 0;
@@ -483,6 +524,8 @@ module control_unit(
                 ALUOp = 2'b00;
                 isSub = 0;
                 isValid = 0;
+                decoded_rs1 = 0;
+                decoded_rs2 = 0;
             end
         endcase
     end
@@ -632,6 +675,8 @@ module id_ex_pipeline(
     input logic [31:0] id_imm32,
     input logic [2:0] id_funct3,
     input logic [4:0] id_rd,
+    input logic [4:0] id_decoded_rs1,
+    input logic [4:0] id_decoded_rs2,
 
     output logic ex_ALUSrc,
     output logic [1:0] ex_ALUSrcA_sel,
@@ -650,7 +695,9 @@ module id_ex_pipeline(
     output logic [31:0] ex_read_data2,
     output logic [31:0] ex_imm32,
     output logic [2:0] ex_funct3,
-    output logic [4:0] ex_rd
+    output logic [4:0] ex_rd,
+    output logic [4:0] ex_decoded_rs1,
+    output logic [4:0] ex_decoded_rs2
 );
 
     always_ff @(posedge clk) begin
@@ -665,7 +712,8 @@ module id_ex_pipeline(
             ex_ALUOp <= 0;
             ex_isSub <= 0;
             ex_isValid <= 0;
-
+            ex_decoded_rs1 <= 0;
+            ex_decoded_rs2 <= 0;
             ex_pc <= 0;
             ex_inst <= 0;
             ex_read_data1 <= 0;
@@ -684,7 +732,8 @@ module id_ex_pipeline(
             ex_ALUOp <= 0;
             ex_isSub <= 0;
             ex_isValid <= 0;
-
+            ex_decoded_rs1 <= 0;
+            ex_decoded_rs2 <= 0;
             ex_pc <= 0;
             ex_inst <= 32'h00000013; // NOP
             ex_read_data1 <= 0;
@@ -703,7 +752,8 @@ module id_ex_pipeline(
             ex_ALUOp <= id_ALUOp;
             ex_isSub <= id_isSub;
             ex_isValid <= id_isValid;
-
+            ex_decoded_rs1 <= id_decoded_rs1;
+            ex_decoded_rs2 <= id_decoded_rs2;
             ex_pc <= id_pc;
             ex_inst <= id_inst;
             ex_read_data1 <= id_read_data1;
@@ -731,6 +781,7 @@ module ex_mem_pipeline(
     input logic [31:0] ex_alu_out,
     input logic [31:0] ex_read_data2,
     input logic [4:0] ex_rd,
+    input logic [2:0] ex_funct3,
     output logic mem_MemtoReg,
     output logic mem_RegWrite,
     output logic mem_Branch,
@@ -741,7 +792,8 @@ module ex_mem_pipeline(
     output logic mem_Zero,
     output logic [31:0] mem_alu_out,
     output logic [31:0] mem_read_data2,
-    output logic [4:0] mem_rd
+    output logic [4:0] mem_rd,
+    output logic [2:0] mem_funct3
 );
 
     always_ff @(posedge clk) begin
@@ -757,6 +809,7 @@ module ex_mem_pipeline(
             mem_alu_out <= 0;
             mem_read_data2 <= 0;
             mem_rd <= 0;
+            mem_funct3 <= 0;
         end else if (ex_mem_Write) begin
             mem_MemtoReg <= ex_MemtoReg;
             mem_RegWrite <= ex_RegWrite;
@@ -769,6 +822,7 @@ module ex_mem_pipeline(
             mem_alu_out <= ex_alu_out;
             mem_read_data2 <= ex_read_data2;
             mem_rd <= ex_rd;
+            mem_funct3 <= ex_funct3;
         end
     end
 
@@ -823,7 +877,9 @@ module forwarding_unit(
         // ---------------------
         // ForwardA (for ex_rs1)
         // ---------------------
-        if (mem_RegWrite && (mem_rd != 0) && (mem_rd == ex_rs1)) begin
+        if (ex_rs1 == 0) begin
+            ForwardA = 2'b00;
+        end else if (mem_RegWrite && (mem_rd != 0) && (mem_rd == ex_rs1)) begin
             // MEM->EX
             ForwardA = 2'b10;
         end else if (wb_RegWrite && (wb_rd != 0) && (wb_rd == ex_rs1)) begin
@@ -837,7 +893,9 @@ module forwarding_unit(
         // ---------------------
         // ForwardB (for ex_rs2)
         // ---------------------
-        if (mem_RegWrite && (mem_rd != 0) && (mem_rd == ex_rs2)) begin
+        if (ex_rs2 == 0) begin
+            ForwardB = 2'b00;
+        end else if (mem_RegWrite && (mem_rd != 0) && (mem_rd == ex_rs2)) begin
             // MEM->EX
             ForwardB = 2'b10;
         end else if (wb_RegWrite && (wb_rd != 0) && (wb_rd == ex_rs2)) begin
@@ -1294,6 +1352,7 @@ module riscv_cpu(
     wire [31:0] mem_alu_out;
     wire [31:0] mem_read_data2;
     wire [4:0] mem_rd;
+    wire [2:0] mem_funct3;
 
     wire [31:0] mux_alu_out;
 
@@ -1306,6 +1365,11 @@ module riscv_cpu(
     wire [31:0] id_read_data2;
     wire [31:0] ex_read_data1;
     wire [31:0] ex_read_data2;
+
+    wire [4:0] id_decoded_rs1;
+    wire [4:0] id_decoded_rs2;
+    wire [4:0] ex_decoded_rs1;
+    wire [4:0] ex_decoded_rs2;
 
     wire wb_RegWrite;
     wire wb_MemtoReg;
@@ -1384,8 +1448,8 @@ module riscv_cpu(
     stall_unit stall_unit_0(
         .ex_MemRead(ex_MemRead),
         .ex_rd(ex_rd),
-        .id_rs1(id_inst[19:15]),
-        .id_rs2(id_inst[24:20]),
+        .id_rs1(id_decoded_rs1),
+        .id_rs2(id_decoded_rs2),
         .if_pc_MemRead(if_pc_MemRead),
         .if_pc_read_data_valid(if_pc_read_data_valid),
         .mem_data_MemRead(mem_data_MemRead),
@@ -1447,6 +1511,8 @@ module riscv_cpu(
         .id_imm32(id_imm32),
         .id_funct3(id_inst[14:12]),
         .id_rd(id_inst[11:7]),
+        .id_decoded_rs1(id_decoded_rs1),
+        .id_decoded_rs2(id_decoded_rs2),
 
         .ex_ALUSrc(ex_ALUSrc),
         .ex_ALUSrcA_sel(ex_ALUSrcA_sel),
@@ -1465,7 +1531,9 @@ module riscv_cpu(
         .ex_read_data2(ex_read_data2),
         .ex_imm32(ex_imm32),
         .ex_funct3(ex_funct3),
-        .ex_rd(ex_rd)
+        .ex_rd(ex_rd),
+        .ex_decoded_rs1(ex_decoded_rs1),
+        .ex_decoded_rs2(ex_decoded_rs2)
     );
 
     ex_mem_pipeline ex_mem_pipeline0(
@@ -1483,6 +1551,7 @@ module riscv_cpu(
         .ex_alu_out(ex_alu_out),
         .ex_read_data2(mux3to1_alu_b_out),
         .ex_rd(ex_rd),
+        .ex_funct3(ex_funct3),
         .mem_MemtoReg(mem_MemtoReg),
         .mem_RegWrite(mem_RegWrite),
         .mem_Branch(mem_Branch),
@@ -1493,7 +1562,8 @@ module riscv_cpu(
         .mem_Zero(mem_Zero),
         .mem_alu_out(mem_alu_out),
         .mem_read_data2(mem_read_data2),
-        .mem_rd(mem_rd)
+        .mem_rd(mem_rd),
+        .mem_funct3(mem_funct3)
     );
 
     mem_wb_pipeline mem_wb_pipeline_0(
@@ -1528,7 +1598,9 @@ module riscv_cpu(
         .Branch(id_Branch),
         .ALUOp(id_ALUOp),
         .isSub(id_isSub),
-        .isValid(id_isValid)
+        .isValid(id_isValid),
+        .decoded_rs1(id_decoded_rs1),
+        .decoded_rs2(id_decoded_rs2)
     );
 
     forwarding_unit forwarding_unit_0(
@@ -1536,8 +1608,8 @@ module riscv_cpu(
         .wb_RegWrite(wb_RegWrite),
         .mem_rd(mem_rd),
         .wb_rd(wb_rd),
-        .ex_rs1(ex_inst[19:15]),
-        .ex_rs2(ex_inst[24:20]),
+        .ex_rs1(ex_decoded_rs1),
+        .ex_rs2(ex_decoded_rs2),
         .ForwardA(ForwardA),
         .ForwardB(ForwardB)
     );
@@ -1621,6 +1693,7 @@ module riscv_cpu(
         .rst_n(rst_n),
         .MemRead(mem_data_MemRead),
         .MemWrite(mem_data_MemWrite),
+        .funct3(mem_funct3),
         .address(mem_alu_out),
         .write_data(mem_read_data2),
         .read_data_valid(mem_data_read_data_valid),

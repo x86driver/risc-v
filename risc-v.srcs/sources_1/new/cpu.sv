@@ -996,6 +996,26 @@ module control_hazard_detection_unit(
                             branch_taken = 1;
                         end
                     end
+                    3'b100: begin // blt
+                        if ($signed(ex_mux3to1_alu_a_out) < $signed(ex_mux3to1_alu_b_out)) begin
+                            branch_taken = 1;
+                        end
+                    end
+                    3'b101: begin // bge
+                        if ($signed(ex_mux3to1_alu_a_out) >= $signed(ex_mux3to1_alu_b_out)) begin
+                            branch_taken = 1;
+                        end
+                    end
+                    3'b110: begin // bltu
+                        if ($unsigned(ex_mux3to1_alu_a_out) < $unsigned(ex_mux3to1_alu_b_out)) begin
+                            branch_taken = 1;
+                        end
+                    end
+                    3'b111: begin // bgeu
+                        if ($unsigned(ex_mux3to1_alu_a_out) >= $unsigned(ex_mux3to1_alu_b_out)) begin
+                            branch_taken = 1;
+                        end
+                    end
                     default: begin
                     end
                 endcase
@@ -1017,7 +1037,7 @@ module control_hazard_detection_unit(
             if (is_jal) begin
                 pc_branch_target = ex_pc + {{12{ex_inst[31]}}, ex_inst[19:12], ex_inst[20], ex_inst[30:21], 1'b0};
             end else if (is_jalr) begin
-                pc_branch_target = (ex_mux3to1_alu_a_out + {{20{ex_inst[31]}}, ex_inst[31:20]}) & 32'hffffffe;
+                pc_branch_target = (ex_mux3to1_alu_a_out + {{20{ex_inst[31]}}, ex_inst[31:20]}) & 32'hffff_fffe;
             end else begin
                 pc_branch_target = ex_pc + ex_imm32;  // 計算好的目標位址
             end

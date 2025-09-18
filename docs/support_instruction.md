@@ -47,6 +47,10 @@
 |------|--------|--------|------|
 | BEQ  | 1100011 | 000 | 相等則分支：if (rs1 == rs2) PC = PC + imm |
 | BNE  | 1100011 | 001 | 不相等則分支：if (rs1 != rs2) PC = PC + imm |
+| BLT  | 1100011 | 100 | Branch <: if(rs1 < rs2) PC += imm |
+| BGE  | 1100011 | 101 | Branch ≥: if(rs1 >= rs2) PC += imm |
+| BLTU | 1100011 | 110 | Branch < (U): if(rs1 < rs2) PC += imm zero-extends |
+| BGEU | 1100011 | 111 | Branch ≥ (U): if(rs1 >= rs2) PC += imm zero-extends |
 
 ### 跳躍指令
 | 指令 | 操作碼 | 說明 |
@@ -88,11 +92,6 @@
 - 實作了 data forwarding 和 hazard detection 機制
 
 ## 尚未支援的指令
-
-blt
-bge
-bltu
-bgeu
 
 ecall
 ebreak

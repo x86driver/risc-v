@@ -1,0 +1,135 @@
+# x31 作為通過計數器；每通過一項測試 x31 += 1
+31 00000000  # init
+
+# beq taken: 5 == 5
+1 00000005
+2 00000005
+31 00000001
+
+# beq not taken: 1 != 2
+1 00000001
+2 00000002
+31 00000002
+
+# bne taken: 1 != 2
+1 00000001
+2 00000002
+31 00000003
+
+# bne not taken: 3 == 3
+1 00000003
+2 00000003
+31 00000004
+
+# blt (signed) taken: -1 < 0
+1 ffffffff
+2 00000000
+31 00000005
+
+# blt (signed) not taken: 5 !< -1
+1 00000005
+2 ffffffff
+31 00000006
+
+# bge (signed) taken: -1 >= -1
+1 ffffffff
+2 ffffffff
+31 00000007
+
+# bge (signed) not taken: -1 !>= 0
+1 ffffffff
+2 00000000
+31 00000008
+
+# bltu (unsigned) taken: 0 < 0xffffffff
+1 00000000
+2 ffffffff
+31 00000009
+
+# bltu (unsigned) not taken: 0xffffffff !< 1
+1 ffffffff
+2 00000001
+31 0000000a
+
+# bgeu (unsigned) taken: 0xffffffff >= 1
+1 ffffffff
+2 00000001
+31 0000000b
+
+# bgeu (unsigned) not taken: 1 !>= 0xffffffff
+1 00000001
+2 ffffffff
+31 0000000c
+
+# 邊界值（signed/unsigned）組合：
+# blt (signed) taken: MIN_INT(0x80000000) < MAX_INT(0x7fffffff)
+1 00000001
+1 80000000
+2 ffffffff
+2 7fffffff
+31 0000000d
+
+# bge (signed) taken: MAX_INT >= MIN_INT（沿用 x1=0x80000000, x2=0x7fffffff）
+31 0000000e
+
+# bltu (unsigned) not taken: 0x80000000 !< 0x7fffffff（沿用 x1, x2）
+31 0000000f
+
+# bgeu (unsigned) equality: 123 >= 123
+1 0000007b
+2 0000007b
+31 00000010
+
+# bne with x0,x0 not taken
+31 00000011
+
+# beq backward jump taken
+31 00000012
+
+# 前遞（EX->EX）taken：add 產生之結果立刻被 beq 使用
+23 00000002  # x23 = 2
+20 00000001  # x20 = 1
+21 00000001  # x21 = 1
+22 00000002  # x22 = x20 + x21 = 2
+31 00000013  # 通過計數
+
+# 前遞（EX->EX）not-taken：比較不相等
+23 00000003  # x23 = 3
+20 00000001  # x20 = 1
+21 00000001  # x21 = 1
+22 00000002  # x22 = 2
+31 00000014  # 通過計數
+
+# load-use（taken）：lw 結果立刻被 beq 使用（需要 stall/或正確前遞）
+1 00000100   # x1 = base 0x100
+2 0000007b   # x2 = 123
+10 0000007b  # x10 = lw [x1]
+31 00000015  # 通過計數
+
+# load-use（not-taken）：lw 結果 != 比較常數
+2 0000007b   # x2 = 123
+10 0000007b  # x10 = lw [x1]
+12 0000007c  # x12 = 124
+31 00000016  # 通過計數
+
+# 大位移分支（正向，taken）
+31 00000017  # 通過計數
+
+# 大位移分支（負向，taken，向前跳回）
+31 00000018  # 通過計數
+
+# jal 與分支交錯：jal 跳過包含分支的區塊（flush 正確）
+31 00000019
+
+# 分支跳入目標內含 jal，再次跳轉（連續兩次控制移轉）
+31 0000001a
+
+# jalr 透過暫存器目標（以 %hi/%lo 載入位址）
+5 00000000   # lui x5, %hi(jalr_tgt1)
+5 000002ec   # addi x5, x5, %lo(jalr_tgt1)
+31 0000001b  # jalr 到 jalr_tgt1 後通過計數
+
+# 分支進入區塊後以 jalr 跳轉
+6 00000000   # lui x6, %hi(jalr_tgt2)
+6 00000308   # addi x6, x6, %lo(jalr_tgt2)
+31 0000001c  # jalr 到 jalr_tgt2 後通過計數

@@ -1,0 +1,19 @@
+10 00000100  # x10 = 0x100 (base address)
+12 00000055  # x12 = 0x55  (store data)
+1  00000001  # after sw+branch taken
+2  00000002  # after sw+jal x0 taken
+4  00000004  # after beq taken + jal x0 taken chain
+8  00000008  # after double beq taken
+9  00000009  # after triple beq taken
+5  00000055  # lw x5,0(x10) -> 0x55
+6  00000006  # lw-use hazard taken then fall-through addi
+5  00000000  # lui x5,%hi(after_jalr1)
+5  00000090  # addi x5,%lo(after_jalr1) (label addr, observed 0x90)
+11 0000000b  # after sw + jalr x0 to label
+15 00000000  # addi x15,0
+16 00000001  # addi x16,1
+13 0000000d  # not-taken beq path fall-through
+14 0000000e  # after Ln1
+20 00000014  # after dense branch chain (Case 9)
+21 00000015  # mem_stall + not-taken interleave (Case 10)
+22 00000016  # dense lw x0 + branch interleave (Case 11)

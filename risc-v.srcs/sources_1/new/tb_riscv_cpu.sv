@@ -313,6 +313,7 @@ module tb_riscv_cpu;
             $display("\n--- Register Snapshot (%0s) ---", case_name);
             $display("x1=%h x2=%h x3=%h x4=%h", dut.reg_file_0.registers[1], dut.reg_file_0.registers[2], dut.reg_file_0.registers[3], dut.reg_file_0.registers[4]);
             $display("x5=%h x6=%h x7=%h x8=%h", dut.reg_file_0.registers[5], dut.reg_file_0.registers[6], dut.reg_file_0.registers[7], dut.reg_file_0.registers[8]);
+            $display("mtvec=%h, mepc=%h", dut.csr_file_0.mtvec, dut.csr_file_0.mepc);
         end
 
         if (compare_commits && (seen < exp_len)) begin

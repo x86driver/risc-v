@@ -196,7 +196,7 @@ def main() -> None:
             "-nostdlib",
             "-Wl,-Ttext=0",
             "-Wl,--no-relax",
-            "-march=rv32i",
+            "-march=rv32i_zicsr",
             "-mabi=ilp32",
             "-g",
             "-o",

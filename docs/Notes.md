@@ -139,7 +139,7 @@ Branch = 1 - 需要跳轉
 MAX_COMMITS = 1024, 如果之後有更大的測試程式, 這裡要記得改
 
 08/24
-===============
+==============
 
 下一個可以做的指令：
 jalr
@@ -148,7 +148,7 @@ jalr
 資料存取要 4-byte 對齊
 
 08/29
-===============
+==============
 
 slli, srli, srai 的 imm[5:11] 應該要檢查是否為合法指令
 
@@ -178,6 +178,83 @@ slli, srli, srai 的 imm[5:11] 應該要檢查是否為合法指令
 別求一步到位
 
 09/16
-===============
+==============
 
 1. 在模組間的 wire 一定要記得宣告, 否則就算 compile 能過, 他預設只會給你 1 bit 的大小
+
+09/21
+==============
+
+ecall 的支援方式：
+
+WB 才做 pc 的決策 並且要覆蓋 pc_branch_sel
+Flush 要把 EX, MEM 也 Flush
+
+修改: control_hazard_detection_unit
+加入 wb_inst, wb_pc, ex_Flush, mem_Flush
+
+pc_target_branch 直接在模組內判斷
+
+在 control_unit 是否需要拉額外的控制線到 WB?
+例如 csr_read, csr_write
+
+或是拉 wb_inst, 然後做一個 csr module, 直接在裡面處理所有 csr 相關指令？
+control_unit 只需要 is_Valid = 1;
+
+可是如果要讀 csr 的值出來 然後寫入 reg 要怎麼做？這樣會跟 wb_RegWrite 衝突
+mux2to1 mux2to1_memory 可能可以在這裡改成 mux3to1? 其中一路是從 csr 來的？
+
+csr 相關的指令**都有**:
+* RegWrite = 1;
+* 寫入 csr
+* 讀取 csr
+
+ID: 根據 12-bit 讀出 csr (id_read_csr) 並傳給 pipeline, 並且 csr_RegWrite = 1
+EX: control_hazard_detection_unit 判斷如果是 ecall 就要根據 ex_read_csr 跳轉
+stall_unit 應該不用判斷: load-use hazard
+forwarding_unit 要判斷: 只需要一路, 如果上條指令寫入某個 csr, 現在這條指令讀取 csr, 則做 WB->EX
+MEM:
+WB: mux2to1_memory 加上 csr_RegWrite, 將 wb_read_csr 寫回
+
+```verilog
+    mux3to1 mux3to1_alu_a(
+        .sel(ForwardA),
+        .A(ex_read_data1),
+        .B(wb_reg_write_data),
+        .C(mem_alu_out),
+        .mux_out(mux3to1_alu_a_out)
+    );
+
+    mux3to1 mux3to1_alu_b(
+        .sel(ForwardB),
+        .A(ex_read_data2),
+        .B(wb_reg_write_data),
+        .C(mem_alu_out),
+        .mux_out(mux3to1_alu_b_out)
+    );
+
+    mux3to1 mux3to1_alu_a_operand(
+        .sel(ex_ALUSrcA_sel),
+        .A(mux3to1_alu_a_out),
+        .B(ex_pc),
+        .C(32'h0),
+        .mux_out(mux3to1_alu_a_operand_out)
+    );
+
+    mux2to1 mux2to1_alu(
+        .sel(ex_ALUSrc),
+        .A(mux3to1_alu_b_out),
+        .B(ex_imm32),
+        .mux_out(mux_alu_out)
+    );
+```
+
+09/29
+==============
+
+1. 可以寫入 mtvec 了
+2. 讀取舊值寫回 reg 也 ok
+3. 接下來要做的:
+
+- [x] ecall 00000073 (所以 rd = 0)
+- [ ] forwarding (可以先用 nop 測試)

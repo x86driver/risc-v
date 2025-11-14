@@ -258,3 +258,61 @@ WB: mux2to1_memory 加上 csr_RegWrite, 將 wb_read_csr 寫回
 
 - [x] ecall 00000073 (所以 rd = 0)
 - [ ] forwarding (可以先用 nop 測試)
+
+10/12
+==============
+
+1. 因為 ecall 執行的時候, x1 已經在 WB 了, 所以測不到 x1 在 MEM 階段的 forwarding
+
+00000097  // auipc	x1,0x0
+01808093  // addi	x1,x1,24 # 1c <ex0>
+30509173  // csrrw	x2,mtvec,x1
+00000073  // ecall
+
+如果改成這樣, 是否可以測 x1 在 MEM 階段的 forwarding?
+
+00000097  // auipc	x1,0x0
+01808093  // addi	x1,x1,24 # 1c <ex0>
+????????  // addi   x2,x2,FF # 把 WB 的訊號線改成別的內容
+30509173  // csrrw	x2,mtvec,x1
+00000073  // ecall
+
+
+2. 接下來要做的:
+- [ ] 支援 csrrwi
+- [x] csr_control_unit 要多一個訊號, xxx_sel 用來選擇資料是從 reg 讀出來還是把 rs1 當作「值」
+- [x] 實作 ex_csr_src_is_zimm 選擇訊號 (可能是 ex_decoded_rs1 和 forwarding 之後的值) 要在 EX 階段選擇
+- [x] 把 csr_src_is_zimm 加入流水線
+- [x] input: 找出 forwarding 之後的值在哪裡 (mux3to1_alu_a_out)
+- [x] output: 找出 forwarding 原本應該餵給誰, (mux3to1 mux3to1_alu_a_operand) 用一條新的訊號取代 (經過 ex_csr_src_is_zimm 選擇後的)
+- [x] 改名 csr_src_is_zimm
+- [x] cleanup mux2to1_debug
+
+11/13
+==============
+
+3. 目前的問題:
+- [x] csrrwi x2, mtvec, 0x1c # 這行執行後 還是需要 nop 才能讓 ecall 拿到正確的 mtvec
+- [x] 找到問題, 因為 csr_forwarding_unit 實作少了 mem_csr_read_data 所以沒有正確 forward
+
+4. csrrw 有其他問題:
+csrrw x2, mtvec, x1 之後:
+mem_CsrWrite: 1, mem_csr_read_data: deadbeef, wb_CsrWrite: 0, wb_reg_write_data: 0000001c
+因為 x2 在 mem 時會被寫入 deadbeef
+但 ecall 應該要讀取 x1 (即將寫入 mtvec 的值, 而不是 forwarding x2 的值)
+.mem_csr_read_data(mem_alu_out), 這樣寫才對 因為 mem_alu_out 是 rs1 的值
+(就跟 sw 指令的 rs1 是一樣的, csrrw 的 rs1)
+
+5. 下一步加上測試:
+- [ ] 連續兩個指令都寫入 csr (第一個指令要寫入錯誤的地址, 第二個寫入正確的, 用來測試 mem forwarding)
+- [ ] 把 WB 的訊號線改成別的內容 (詳見上述) 測試 mem forwarding
+- [ ] csrrw ecall 中間插一條無關的指令 測試 wb forwarding
+- [ ] 測試沒有 forwarding 的情況
+
+
+11/14
+==============
+
+1. 之後要做的
+- [ ] 30200073  // mret
+- [ ] 目前 forwarding 只有考慮 mtvec

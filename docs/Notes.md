@@ -316,3 +316,16 @@ mem_CsrWrite: 1, mem_csr_read_data: deadbeef, wb_CsrWrite: 0, wb_reg_write_data:
 1. 之後要做的
 - [ ] 30200073  // mret
 - [ ] 目前 forwarding 只有考慮 mtvec
+
+11/18
+==============
+
+- [x] 安裝 spike
+MacOS 步驟:
+
+```bash
+git clone https://github.com/riscv-software-src/riscv-isa-sim
+cd riscv-isa-sim
+./configure
+make -j$(sysctl -n hw.ncpu)
+```

@@ -257,7 +257,7 @@ WB: mux2to1_memory 加上 csr_RegWrite, 將 wb_read_csr 寫回
 3. 接下來要做的:
 
 - [x] ecall 00000073 (所以 rd = 0)
-- [ ] forwarding (可以先用 nop 測試)
+- [x] forwarding (可以先用 nop 測試)
 
 10/12
 ==============
@@ -279,7 +279,7 @@ WB: mux2to1_memory 加上 csr_RegWrite, 將 wb_read_csr 寫回
 
 
 2. 接下來要做的:
-- [ ] 支援 csrrwi
+- [x] 支援 csrrwi
 - [x] csr_control_unit 要多一個訊號, xxx_sel 用來選擇資料是從 reg 讀出來還是把 rs1 當作「值」
 - [x] 實作 ex_csr_src_is_zimm 選擇訊號 (可能是 ex_decoded_rs1 和 forwarding 之後的值) 要在 EX 階段選擇
 - [x] 把 csr_src_is_zimm 加入流水線
@@ -329,3 +329,13 @@ cd riscv-isa-sim
 ./configure
 make -j$(sysctl -n hw.ncpu)
 ```
+
+
+11/23
+==============
+
+1. 加上 csrrs, 可以讀到 mepc
+2. 除了讀出來, 要正確處理另一部分： CSR = CSR|R[rs1]
+3. 用 funct3 應該就可以代表 csr operation?
+4. csrrc (clear), csrrs (set), csrrw (write) 目前需處理這三種 operations
+5. 採用 Gemini 建議, 所有 csr 指令用 stall, 而 ecall 保持 forwarding

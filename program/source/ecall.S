@@ -16,9 +16,11 @@ end:
 
 ex0:
     addi x4, x0, 4
-    j end
+    addi x5, x0, 0xff
 
-    # csrr x6, mepc
+    csrrs x6, mepc, x4
+    csrrs x7, mepc, x5
+    j end
     # addi x6, x6, 4
     # csrrw x0, mepc, x6
     mret

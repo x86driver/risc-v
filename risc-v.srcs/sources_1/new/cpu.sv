@@ -385,6 +385,7 @@ module csr_file(
     input  logic        CsrWrite,
     input  logic [11:0] CsrWriteImm12,
     input  logic [31:0] csr_write_data,
+    input  logic [2:0]  csr_funct3,
     output logic [31:0] csr_read_data,
 
     input  logic        ex_trap_take,
@@ -437,14 +438,25 @@ module csr_file(
 
         // (1) CSR 寫入（CSRRW/CSRRS 等），先更新 *_n
         if (CsrWrite) begin
-            unique case (CsrWriteImm12)
-                12'h305: mtvec_n   = {csr_write_data[31:2], 2'b00}; // 僅支援 MODE=Direct，強制對齊
-                12'h341: mepc_n    = {csr_write_data[31:1], 1'b0};  // 對齊 bit0=0
-                12'h342: mcause_n  = csr_write_data;
-                12'h343: mtval_n   = csr_write_data;
-                12'h300: mstatus_n = csr_write_data;                // 先不嚴格檢查各位元
-                default: ; // 其他 CSR 暫不處理
-            endcase
+            if (csr_funct3 == 3'b001 || csr_funct3 == 3'b101) begin // csrrw / csrrwi
+                case (CsrWriteImm12)
+                    12'h305: mtvec_n   = {csr_write_data[31:2], 2'b00}; // 僅支援 MODE=Direct，強制對齊
+                    12'h341: mepc_n    = {csr_write_data[31:1], 1'b0};  // 對齊 bit0=0
+                    12'h342: mcause_n  = csr_write_data;
+                    12'h343: mtval_n   = csr_write_data;
+                    12'h300: mstatus_n = csr_write_data;                // 先不嚴格檢查各位元
+                    default: ; // 其他 CSR 暫不處理
+                endcase
+            end else if (csr_funct3 == 3'b010) begin // csrrs
+                case (CsrWriteImm12)
+                    12'h305: mtvec_n   |= {csr_write_data[31:2], 2'b00}; // 僅支援 MODE=Direct，強制對齊
+                    12'h341: mepc_n    |= {csr_write_data[31:1], 1'b0};  // 對齊 bit0=0
+                    12'h342: mcause_n  |= csr_write_data;
+                    12'h343: mtval_n   |= csr_write_data;
+                    12'h300: mstatus_n |= csr_write_data;                // 先不嚴格檢查各位元
+                    default: ; // 其他 CSR 暫不處理
+                endcase
+            end
         end
 
         // (2) Trap-entry：覆蓋/轉換，基於「已套用 CSRW 後」的 *_n
@@ -458,6 +470,7 @@ module csr_file(
             mstatus_n[7]     = mstatus_n[3];  // MPIE <- MIE
             mstatus_n[3]     = 1'b0;          // MIE  <- 0
             mstatus_n[12:11] = 2'b11;         // MPP  <- M
+            $strobe("[csr file] ex_trap_take: mepc_n: %h", mepc_n);
         end
     end
 
@@ -479,7 +492,8 @@ module csr_control_unit(
     output logic CsrtoReg,
     output logic CsrWrite,
     output logic [11:0] CsrWriteImm12,
-    output logic csr_src_is_zimm
+    output logic csr_src_is_zimm,
+    output logic [2:0] csr_funct3
 );
 
     always_comb begin
@@ -487,7 +501,9 @@ module csr_control_unit(
         CsrWrite = 0;
         CsrWriteImm12 = 0;
         csr_src_is_zimm = 0; // 0: select from register's content, 1: rs1 as a value
+        csr_funct3 = 0;
         if (id_inst[6:0] == 7'b1110011) begin // csr
+            csr_funct3 = id_inst[14:12];
             if (id_inst[14:12] == 3'b000) begin // ecall
                 CsrtoReg = 0;
             end else if (id_inst[14:12] == 3'b001) begin // csrrw
@@ -502,6 +518,11 @@ module csr_control_unit(
                 CsrWriteImm12 = id_inst[31:20];
                 csr_src_is_zimm = 1;
                 $display("[csr_control_unit] csrrwi: csr_src_is_zimm: %h", csr_src_is_zimm);
+            end else if (id_inst[14:12] == 3'b010) begin // csrrs
+                CsrtoReg = 1;
+                CsrWrite = 1;
+                CsrWriteImm12 = id_inst[31:20];
+                csr_src_is_zimm = 0;
             end
         end
     end
@@ -843,6 +864,7 @@ module id_ex_pipeline(
     input logic [31:0] id_csr_read_data,
     input logic [31:0] id_csr_mtvec,
     input logic id_csr_src_is_zimm,
+    input logic [2:0] id_csr_funct3,
 
     output logic ex_ALUSrc,
     output logic [1:0] ex_ALUSrcA_sel,
@@ -870,7 +892,8 @@ module id_ex_pipeline(
     output logic [11:0] ex_CsrWriteImm12,
     output logic [31:0] ex_csr_read_data,
     output logic [31:0] ex_csr_mtvec,
-    output logic ex_csr_src_is_zimm
+    output logic ex_csr_src_is_zimm,
+    output logic [2:0] ex_csr_funct3
 );
 
     always_ff @(posedge clk) begin
@@ -900,6 +923,7 @@ module id_ex_pipeline(
             ex_csr_read_data <= 0;
             ex_csr_mtvec <= 0;
             ex_csr_src_is_zimm <= 0;
+            ex_csr_funct3 <= 0;
         end else if (id_Flush) begin
             ex_ALUSrc <= 0;
             ex_ALUSrcA_sel <= 0;
@@ -926,6 +950,7 @@ module id_ex_pipeline(
             ex_csr_read_data <= 0;
             ex_csr_mtvec <= 0;
             ex_csr_src_is_zimm <= 0;
+            ex_csr_funct3 <= 0;
         end else if (id_ex_Write) begin
             ex_ALUSrc <= id_ALUSrc;
             ex_ALUSrcA_sel <= id_ALUSrcA_sel;
@@ -952,6 +977,7 @@ module id_ex_pipeline(
             ex_csr_read_data <= id_csr_read_data;
             ex_csr_mtvec <= id_csr_mtvec;
             ex_csr_src_is_zimm <= id_csr_src_is_zimm;
+            ex_csr_funct3 <= id_csr_funct3;
         end
     end
 
@@ -977,6 +1003,7 @@ module ex_mem_pipeline(
     input logic ex_CsrWrite,
     input logic [11:0] ex_CsrWriteImm12,
     input logic [31:0] ex_csr_read_data,
+    input logic [2:0] ex_csr_funct3,
     output logic mem_MemtoReg,
     output logic mem_RegWrite,
     output logic mem_Branch,
@@ -992,7 +1019,8 @@ module ex_mem_pipeline(
     output logic mem_CsrtoReg,
     output logic mem_CsrWrite,
     output logic [11:0] mem_CsrWriteImm12,
-    output logic [31:0] mem_csr_read_data
+    output logic [31:0] mem_csr_read_data,
+    output logic [2:0] mem_csr_funct3
 );
 
     always_ff @(posedge clk) begin
@@ -1013,6 +1041,7 @@ module ex_mem_pipeline(
             mem_CsrWrite <= 0;
             mem_CsrWriteImm12 <= 0;
             mem_csr_read_data <= 0;
+            mem_csr_funct3 <= 0;
         end else if (ex_mem_Write) begin
             mem_MemtoReg <= ex_MemtoReg;
             mem_RegWrite <= ex_RegWrite;
@@ -1030,6 +1059,7 @@ module ex_mem_pipeline(
             mem_CsrWrite <= ex_CsrWrite;
             mem_CsrWriteImm12 <= ex_CsrWriteImm12;
             mem_csr_read_data <= ex_csr_read_data;
+            mem_csr_funct3 <= ex_csr_funct3;
         end
     end
 
@@ -1048,6 +1078,7 @@ module mem_wb_pipeline(
     input logic mem_CsrWrite,
     input logic [11:0] mem_CsrWriteImm12,
     input logic [31:0] mem_csr_read_data,
+    input logic [2:0] mem_csr_funct3,
     output logic wb_RegWrite,
     output logic wb_MemtoReg,
     output logic [31:0] wb_memory_read_data,
@@ -1056,7 +1087,8 @@ module mem_wb_pipeline(
     output logic wb_CsrtoReg,
     output logic wb_CsrWrite,
     output logic [11:0] wb_CsrWriteImm12,
-    output logic [31:0] wb_csr_read_data
+    output logic [31:0] wb_csr_read_data,
+    output logic [2:0] wb_csr_funct3
 );
 
     always_ff @(posedge clk) begin
@@ -1070,6 +1102,7 @@ module mem_wb_pipeline(
             wb_CsrWrite <= 0;
             wb_CsrWriteImm12 <= 0;
             wb_csr_read_data <= 0;
+            wb_csr_funct3 <= 0;
         end else if (mem_wb_Write) begin
             wb_RegWrite <= mem_RegWrite;
             wb_MemtoReg <= mem_MemtoReg;
@@ -1080,6 +1113,7 @@ module mem_wb_pipeline(
             wb_CsrWrite <= mem_CsrWrite;
             wb_CsrWriteImm12 <= mem_CsrWriteImm12;
             wb_csr_read_data <= mem_csr_read_data;
+            wb_csr_funct3 <= mem_csr_funct3;
         end
     end
 
@@ -1166,45 +1200,37 @@ module csr_forwarding_unit(
 
 endmodule
 
-module hazard_detection_unit(
-    input logic ex_MemRead,
-    input logic [4:0] ex_rd,
-    input logic [4:0] id_rs1,
-    input logic [4:0] id_rs2,
-    output logic if_id_Write,
-    output logic PCWrite,
-    output logic hazard_control_mux_sel
-);
-
-    always_comb begin
-        if (ex_MemRead && (ex_rd == id_rs1 || ex_rd == id_rs2)) begin
-            PCWrite = 0;
-            if_id_Write = 0;
-            hazard_control_mux_sel = 0;
-        end else begin
-            PCWrite = 1;
-            if_id_Write = 1;
-            hazard_control_mux_sel = 1;
-        end
-    end
-
-endmodule
-
-module hazard_mux_2to2(
+module hazard_mux_control(
     input logic sel,
-    input logic MemWrite,
-    input logic RegWrite,
+    input logic id_MemWrite,
+    input logic id_RegWrite,
+    input logic id_MemRead,
+    input logic id_MemtoReg,
+    input logic id_CsrWrite,
+    input logic id_CsrtoReg,
     output logic mux_MemWrite,
-    output logic mux_RegWrite
+    output logic mux_RegWrite,
+    output logic mux_MemRead,
+    output logic mux_MemtoReg,
+    output logic mux_CsrWrite,
+    output logic mux_CsrtoReg
 );
 
     always_comb begin
         if (sel) begin
-            mux_MemWrite = MemWrite;
-            mux_RegWrite = RegWrite;
+            mux_MemWrite = id_MemWrite;
+            mux_RegWrite = id_RegWrite;
+            mux_MemRead = id_MemRead;
+            mux_MemtoReg = id_MemtoReg;
+            mux_CsrWrite = id_CsrWrite;
+            mux_CsrtoReg = id_CsrtoReg;
         end else begin
-            mux_MemWrite = 1'b0;
-            mux_RegWrite = 1'b0;
+            mux_MemWrite = 0;
+            mux_RegWrite = 0;
+            mux_MemRead = 0;
+            mux_MemtoReg = 0;
+            mux_CsrWrite = 0;
+            mux_CsrtoReg = 0;
         end
     end
 
@@ -1339,6 +1365,15 @@ module stall_unit(
     input  logic [4:0] id_rs1,       // 下一條指令在 ID 階段的讀取暫存器1
     input  logic [4:0] id_rs2,       // 下一條指令在 ID 階段的讀取暫存器2
 
+    // CSR Hazard
+    input logic  [31:0] id_inst,
+    input logic         ex_CsrWrite,
+    input logic  [11:0] ex_CsrWriteImm12,
+    input logic         mem_CsrWrite,
+    input logic  [11:0] mem_CsrWriteImm12,
+    input logic         wb_CsrWrite,
+    input logic  [11:0] wb_CsrWriteImm12,
+
     input  logic       if_pc_MemRead,
     input  logic       if_pc_read_data_valid,
 
@@ -1370,6 +1405,11 @@ module stall_unit(
     logic mem_stall;
     logic if_stall;
 
+    logic is_csr_inst;
+    logic [11:0] id_csr_addr;
+    assign is_csr_inst = (id_inst[6:0] == 7'b1110011) && (id_inst[14:12] != 3'b000); // CSR insts (not ecall/mret)
+    assign id_csr_addr = id_inst[31:20];
+
     //==========================================================
     // (1) load-use hazard 偵測
     //==========================================================
@@ -1379,6 +1419,14 @@ module stall_unit(
             if ((ex_rd == id_rs1) || (ex_rd == id_rs2)) begin
                 hazard_stall = 1'b1;
             end
+        end
+        // CSR Data Hazard
+        if (is_csr_inst && (
+            (ex_CsrWrite && ex_CsrWriteImm12 == id_csr_addr) ||
+            (mem_CsrWrite && mem_CsrWriteImm12 == id_csr_addr) ||
+            (wb_CsrWrite && wb_CsrWriteImm12 == id_csr_addr)
+        )) begin
+            hazard_stall = 1'b1;
         end
     end
 
@@ -1627,9 +1675,14 @@ module riscv_cpu(
     wire [31:0] id_csr_read_data;
     wire [31:0] id_csr_mtvec;
     wire id_csr_src_is_zimm;
+    wire [2:0] id_csr_funct3;
 
     wire mux_id_MemWrite;
     wire mux_id_RegWrite;
+    wire mux_id_MemRead;
+    wire mux_id_MemtoReg;
+    wire mux_id_CsrWrite;
+    wire mux_id_CsrtoReg;
 
     wire ex_ALUSrc;
     wire [1:0] ex_ALUSrcA_sel;
@@ -1657,6 +1710,7 @@ module riscv_cpu(
     wire [31:0] ex_trap_cause;
     wire [31:0] ex_trap_tval;
     wire ex_csr_src_is_zimm;
+    wire [2:0] ex_csr_funct3;
 
     wire [1:0] ForwardA;
     wire [1:0] ForwardB;
@@ -1682,6 +1736,7 @@ module riscv_cpu(
     wire mem_CsrWrite;
     wire [11:0] mem_CsrWriteImm12;
     wire [31:0] mem_csr_read_data;
+    wire [2:0] mem_csr_funct3;
 
     wire [31:0] mux_alu_out;
 
@@ -1710,6 +1765,7 @@ module riscv_cpu(
     wire wb_CsrWrite;
     wire [11:0] wb_CsrWriteImm12;
     wire [31:0] wb_csr_read_data;
+    wire [2:0] wb_csr_funct3;
 
     wire [31:0] csr_mtvec_live;
 
@@ -1793,6 +1849,13 @@ module riscv_cpu(
         .ex_rd(ex_rd),
         .id_rs1(id_decoded_rs1),
         .id_rs2(id_decoded_rs2),
+        .id_inst(id_inst),
+        .ex_CsrWrite(ex_CsrWrite),
+        .ex_CsrWriteImm12(ex_CsrWriteImm12),
+        .mem_CsrWrite(mem_CsrWrite),
+        .mem_CsrWriteImm12(mem_CsrWriteImm12),
+        .wb_CsrWrite(wb_CsrWrite),
+        .wb_CsrWriteImm12(wb_CsrWriteImm12),
         .if_pc_MemRead(if_pc_MemRead),
         .if_pc_read_data_valid(if_pc_read_data_valid),
         .mem_data_MemRead(mem_data_MemRead),
@@ -1811,12 +1874,20 @@ module riscv_cpu(
         .mem_wb_Write(mem_wb_Write)
     );
 
-    hazard_mux_2to2 hazard_mux_2to2_0(
+    hazard_mux_control hazard_mux_control_0(
         .sel(hazard_control_mux_sel),
-        .MemWrite(id_MemWrite),
-        .RegWrite(id_RegWrite),
+        .id_MemWrite(id_MemWrite),
+        .id_RegWrite(id_RegWrite),
+        .id_MemRead(id_MemRead),
+        .id_MemtoReg(id_MemtoReg),
+        .id_CsrWrite(id_CsrWrite),
+        .id_CsrtoReg(id_CsrtoReg),
         .mux_MemWrite(mux_id_MemWrite),
-        .mux_RegWrite(mux_id_RegWrite)
+        .mux_RegWrite(mux_id_RegWrite),
+        .mux_MemRead(mux_id_MemRead),
+        .mux_MemtoReg(mux_id_MemtoReg),
+        .mux_CsrWrite(mux_id_CsrWrite),
+        .mux_CsrtoReg(mux_id_CsrtoReg)
     );
 
     if_id_pipeline if_id_pipeline_0(
@@ -1838,9 +1909,9 @@ module riscv_cpu(
 
         .id_ALUSrc(id_ALUSrc),
         .id_ALUSrcA_sel(id_ALUSrcA_sel),
-        .id_MemtoReg(id_MemtoReg),
+        .id_MemtoReg(mux_id_MemtoReg),
         .id_RegWrite(mux_id_RegWrite),
-        .id_MemRead(id_MemRead),
+        .id_MemRead(mux_id_MemRead),
         .id_MemWrite(mux_id_MemWrite),
         .id_Branch(id_Branch),
         .id_ALUOp(id_ALUOp),
@@ -1857,12 +1928,13 @@ module riscv_cpu(
         .id_decoded_rs1(id_decoded_rs1),
         .id_decoded_rs2(id_decoded_rs2),
 
-        .id_CsrtoReg(id_CsrtoReg),
-        .id_CsrWrite(id_CsrWrite),
+        .id_CsrtoReg(mux_id_CsrtoReg),
+        .id_CsrWrite(mux_id_CsrWrite),
         .id_CsrWriteImm12(id_CsrWriteImm12),
         .id_csr_read_data(id_csr_read_data),
         .id_csr_mtvec(id_csr_mtvec),
         .id_csr_src_is_zimm(id_csr_src_is_zimm),
+        .id_csr_funct3(id_csr_funct3),
 
         .ex_ALUSrc(ex_ALUSrc),
         .ex_ALUSrcA_sel(ex_ALUSrcA_sel),
@@ -1890,7 +1962,8 @@ module riscv_cpu(
         .ex_CsrWriteImm12(ex_CsrWriteImm12),
         .ex_csr_read_data(ex_csr_read_data),
         .ex_csr_mtvec(ex_csr_mtvec),
-        .ex_csr_src_is_zimm(ex_csr_src_is_zimm)
+        .ex_csr_src_is_zimm(ex_csr_src_is_zimm),
+        .ex_csr_funct3(ex_csr_funct3)
     );
 
     ex_mem_pipeline ex_mem_pipeline0(
@@ -1913,6 +1986,7 @@ module riscv_cpu(
         .ex_CsrWrite(ex_CsrWrite),
         .ex_CsrWriteImm12(ex_CsrWriteImm12),
         .ex_csr_read_data(ex_csr_read_data),
+        .ex_csr_funct3(ex_csr_funct3),
         .mem_MemtoReg(mem_MemtoReg),
         .mem_RegWrite(mem_RegWrite),
         .mem_Branch(mem_Branch),
@@ -1928,7 +2002,8 @@ module riscv_cpu(
         .mem_CsrtoReg(mem_CsrtoReg),
         .mem_CsrWrite(mem_CsrWrite),
         .mem_CsrWriteImm12(mem_CsrWriteImm12),
-        .mem_csr_read_data(mem_csr_read_data)
+        .mem_csr_read_data(mem_csr_read_data),
+        .mem_csr_funct3(mem_csr_funct3)
     );
 
     mem_wb_pipeline mem_wb_pipeline_0(
@@ -1944,6 +2019,7 @@ module riscv_cpu(
         .mem_CsrWrite(mem_CsrWrite),
         .mem_CsrWriteImm12(mem_CsrWriteImm12),
         .mem_csr_read_data(mem_csr_read_data),
+        .mem_csr_funct3(mem_csr_funct3),
         .wb_RegWrite(wb_RegWrite),
         .wb_MemtoReg(wb_MemtoReg),
         .wb_memory_read_data(wb_memory_read_data),
@@ -1952,7 +2028,8 @@ module riscv_cpu(
         .wb_CsrtoReg(wb_CsrtoReg),
         .wb_CsrWrite(wb_CsrWrite),
         .wb_CsrWriteImm12(wb_CsrWriteImm12),
-        .wb_csr_read_data(wb_csr_read_data)
+        .wb_csr_read_data(wb_csr_read_data),
+        .wb_csr_funct3(wb_csr_funct3)
     );
 
     imm32_gen imm32_gen_0(
@@ -1981,7 +2058,8 @@ module riscv_cpu(
         .CsrtoReg(id_CsrtoReg),
         .CsrWrite(id_CsrWrite),
         .CsrWriteImm12(id_CsrWriteImm12),
-        .csr_src_is_zimm(id_csr_src_is_zimm)
+        .csr_src_is_zimm(id_csr_src_is_zimm),
+        .csr_funct3(id_csr_funct3)
     );
 
     forwarding_unit forwarding_unit_0(
@@ -2085,6 +2163,7 @@ module riscv_cpu(
         .CsrWrite(wb_CsrWrite),
         .CsrWriteImm12(wb_CsrWriteImm12),
         .csr_write_data(wb_reg_write_data),
+        .csr_funct3(wb_csr_funct3),
         .csr_read_data(id_csr_read_data),
         .ex_trap_take(ex_trap_take),
         .ex_trap_pc(ex_trap_pc),

@@ -74,6 +74,8 @@ module tb_riscv_cpu;
     string forbid_rd_cfg;
     string expect_reg_cfg;
     integer dump_fd;
+    integer memory_fd;
+    integer memory_addr;
     bit [31:0] forbid_rd_mask;
     int expect_reg_idx_q[$];
     logic [31:0] expect_reg_val_q[$];
@@ -314,6 +316,22 @@ module tb_riscv_cpu;
             $display("x1=%h x2=%h x3=%h x4=%h", dut.reg_file_0.registers[1], dut.reg_file_0.registers[2], dut.reg_file_0.registers[3], dut.reg_file_0.registers[4]);
             $display("x5=%h x6=%h x7=%h x8=%h", dut.reg_file_0.registers[5], dut.reg_file_0.registers[6], dut.reg_file_0.registers[7], dut.reg_file_0.registers[8]);
             $display("mtvec=%h, mepc=%h", dut.csr_file_0.mtvec, dut.csr_file_0.mepc);
+            $display("\n--- Memory Snapshot saved to \"memory.dump\" ---");
+            memory_fd = $fopen("memory.dump", "w");
+            memory_addr = 0;
+            for (integer i = 0; i < dut.data_memory_multicycle_0.DATA_COUNT / 4; i += 4) begin
+                $fwrite(memory_fd, "%h: ", memory_addr);
+                $fwrite(memory_fd, "%h  ", dut.data_memory_multicycle_0.mem[i]);
+                $fwrite(memory_fd, "%h  ", dut.data_memory_multicycle_0.mem[i + 1]);
+                $fwrite(memory_fd, "%h  ", dut.data_memory_multicycle_0.mem[i + 2]);
+                $fwrite(memory_fd, "%h", dut.data_memory_multicycle_0.mem[i + 3]);
+                $fwrite(memory_fd, "\n");
+                memory_addr += 16;
+            end
+            if (memory_fd != 0) begin
+                $fclose(memory_fd);
+            end
+            // $display("%h %h %h %h", dut.data_memory_multicycle_0.mem[1024], dut.data_memory_multicycle_0.mem[1025], dut.data_memory_multicycle_0.mem[1026], dut.data_memory_multicycle_0.mem[1027]);
         end
 
         if (compare_commits && (seen < exp_len)) begin

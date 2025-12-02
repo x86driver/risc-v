@@ -102,16 +102,33 @@ module instruction_memory_multicycle(
     localparam INST_COUNT = 1024;
 
     logic [31:0] mem [INST_COUNT];
+
+`ifdef IVERILOG
     initial begin
         string hexfile;
         if ($value$plusargs("HEX=%s", hexfile)) begin
             $display("[instruction] Loading program from %0s", hexfile);
             $readmemh(hexfile, mem);
         end else begin
-            $display("[instruction] No HEX file specified, using default values");
-            mem[0] = 32'h00000013; // addi x0, x0, 0
+    `ifdef XILINX_SIMULATOR
+            parameter string default_hex_file = "../../../../hello-readmemh.hex";
+    `else
+            parameter string default_hex_file = "../../uart-hello_prog.hex";
+    `endif
+            $display("[instruction] No HEX file specified, using default file: %0s", default_hex_file);
+            $readmemh(default_hex_file, mem);
         end
     end
+`endif
+
+`ifndef IVERILOG
+    wire [31:0] douta;
+    blk_mem_gen_0 blk_inst_memory_0 (
+        .clka(clk),
+        .addra(32'({2'b00, address[31:2]})),
+        .douta(douta)
+    );
+`endif
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -122,6 +139,7 @@ module instruction_memory_multicycle(
         end else begin
             case (state)
                 IDLE: begin
+                    read_data <= 32'h0;
                     read_data_valid <= 0;
                     write_done <= 0;
                     if (init_calib_complete) begin
@@ -155,20 +173,27 @@ module instruction_memory_multicycle(
                 end
 
                 READ_ADDR: begin
+                    read_data <= 32'h0;
+                    read_data_valid <= 0;
                     state <= READ_DATA;
                 end
 
                 READ_DATA: begin
+`ifdef IVERILOG
                     if (address < 4*INST_COUNT) begin
                         read_data <= mem[address[31:2]];
                     end else begin
                         read_data <= 32'h0;
                     end
+`else
+                    read_data <= douta;
+`endif
                     read_data_valid <= 1;
                     state <= READ_DONE;
                 end
 
                 READ_DONE: begin
+                    read_data <= 32'h0;
                     read_data_valid <= 0;
                     state <= IDLE;
                 end
@@ -209,23 +234,34 @@ module data_memory_multicycle(
 
     state_t state;  // 當前狀態
 
-    localparam DATA_COUNT = 4096;
-    logic [31:0] mem [DATA_COUNT];
+    localparam DATA_COUNT = 1024;
+    //logic [31:0] mem [DATA_COUNT];
 
+// `ifdef XILINX_SIMULATOR
     initial begin
         string hexfile;
         if ($value$plusargs("HEX=%s", hexfile)) begin
             $display("[data] Loading data from %0s", hexfile);
-            $readmemh(hexfile, mem);
+            // $readmemh(hexfile, mem);
         end else begin
             $display("[data] No HEX file specified, using default values");
-            mem[0] = 32'hDEAD_BEEF;
-            mem[1] = 32'h4444_4444;
-            mem[2] = 32'h8888_8888;
-            mem[3] = 32'hCCCC_CCCC;
-            mem[4] = 32'h1010_1010;
+            // mem[0] = 32'hDEAD_BEEF;
+            // mem[1] = 32'h4444_4444;
+            // mem[2] = 32'h8888_8888;
+            // mem[3] = 32'hCCCC_CCCC;
+            // mem[4] = 32'h1010_1010;
         end
     end
+// `endif
+
+    wire [31:0] douta;
+    blk_mem_gen_4k blk_mem_gen_4k_0(
+        .clka(clk),
+        .addra(address[31:2]),
+        .dina(write_data),
+        .douta(douta),
+        .wea(MemWrite)
+    );
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -255,11 +291,11 @@ module data_memory_multicycle(
 
                 WRITE_DATA: begin
                     if (funct3 == 3'b000) begin // sb
-                        mem[address[31:2]][address[1:0]*8 +: 8] <= write_data[7:0];
+                        // mem[address[31:2]][address[1:0]*8 +: 8] <= write_data[7:0];
                     end else if (funct3 == 3'b001) begin // sh
-                        mem[address[31:2]][address[1]*16 +: 16] <= write_data[15:0];
+                        // mem[address[31:2]][address[1]*16 +: 16] <= write_data[15:0];
                     end else if (funct3 == 3'b010) begin // sw
-                        mem[address[31:2]] <= write_data;
+                        // mem[address[31:2]] <= write_data;
                     end
                     state <= WRITE_RESP;
                 end
@@ -283,7 +319,8 @@ module data_memory_multicycle(
                     logic [31:0] word;
                     logic [7:0]  byte_sel;
                     logic [15:0] half_sel;
-                    word = mem[address[31:2]];
+                    // word = mem[address[31:2]];
+                    word = douta;
                     byte_sel = word[address[1:0]*8 +: 8];
                     half_sel = address[1] ? word[31:16] : word[15:0];
 

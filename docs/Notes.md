@@ -19,6 +19,8 @@ riscv64-linux-gnu-objdump -D -M no-aliases a | less
 產生新測例的 golden 提交序列（若要）：
 vvp ./simv +HEX=program/<name>_prog.hex +CASE=<name> +DUMP_EXP=program/<name>.exp
 
+修改每次模擬的時間:
+risc-v.sim/sim_1/behav/xsim/riscv_cpu.tcl
 run 8us
 
 ```bash
@@ -36,6 +38,25 @@ cd /xilinx/
 . tools/Xilinx/Vivado/2024.2/settings64.sh
 ./run.sh
 
+
+coe 檔初始化
+
+```verilog
+memory_initialization_radix=16;
+memory_initialization_vector=
+;
+```
+
+製作 coe 的方法：
+
+```bash
+riscv64-elf-gcc -march=rv32i -mabi=ilp32 -nostdlib -nostartfiles -Wl,-Ttext=0 -o uart-hello.elf program/source/uart-hello.S
+riscv64-elf-objcopy --verilog-data-width=4 -O verilog uart-hello.elf uart-hello.bin
+python3 to_coe.py uart-hello.bin > uart-hello_prog.hex
+```
+
+BRAM 在 simulation 時查看記憶體內容：
+/riscv_cpu/data_memory_multicycle_0/blk_mem_gen_4k_0/inst/\native_mem_module.blk_mem_gen_v8_4_9_inst /memory
 
 工作日誌
 ==========
@@ -339,3 +360,33 @@ make -j$(sysctl -n hw.ncpu)
 3. 用 funct3 應該就可以代表 csr operation?
 4. csrrc (clear), csrrs (set), csrrw (write) 目前需處理這三種 operations
 5. 採用 Gemini 建議, 所有 csr 指令用 stall, 而 ecall 保持 forwarding
+
+11/25
+==============
+
+build riscv-tests
+
+```bash
+export RISCV=/opt/riscv
+export PATH=$RISCV/bin:$PATH
+```
+
+11/28
+==============
+
+uart 顯示 A-Z
+
+- [x] Vivado 加上指令 bram
+- [x] data_multicycle 改用 bram
+- [ ] 試試 synthesis 和 make test-summary 能不能共存
+- [ ] 寫一個新的 tb 來模擬 uart 輸出
+
+- [ ] 讓 uart 輸出倒數秒數 (一開始可以先從 1 開始往上數)
+
+接下來要做的
+- [ ] 考慮 ex_csr_mtvec 是否可移除？
+以下的暫時 stash
+- [ ] 30200073  // mret
+
+注意：multicycle 的 read 一定要有 READ_DONE 再跳回 IDLE, 因為：
+READ_DONE 狀態把「輸出數據」和「開始新請求」分開到兩個不同的周期，避免了任何可能的時序競爭。

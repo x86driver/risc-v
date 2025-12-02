@@ -1,3 +1,16 @@
+## Development Environment Setup
+
+This project uses Git to track sources but ignores Vivado generated IP artifacts.
+**After cloning this repository on a new machine, you MUST run the setup script.**
+
+### Steps to Initialize:
+1. Open `risc-v.xpr` in Vivado.
+2. In the **Tcl Console** (bottom of the window), run:
+   ```tcl
+   cd [get_property DIRECTORY [current_project]]
+   source scripts/setup_ips.tcl
+   ```
+
 # 測試方式：
 
 ```bash

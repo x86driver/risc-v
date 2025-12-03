@@ -371,13 +371,17 @@ export RISCV=/opt/riscv
 export PATH=$RISCV/bin:$PATH
 ```
 
-11/28
+11/28-12/02
 ==============
-
-uart 顯示 A-Z
 
 - [x] Vivado 加上指令 bram
 - [x] data_multicycle 改用 bram
+
+12/03
+==============
+
+- [x] git commit 並且把不必要的中介檔都刪掉了
+- [ ] 直接寫一個 uart 顯示 A-Z
 - [ ] 試試 synthesis 和 make test-summary 能不能共存
 - [ ] 寫一個新的 tb 來模擬 uart 輸出
 

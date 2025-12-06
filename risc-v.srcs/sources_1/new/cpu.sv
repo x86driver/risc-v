@@ -1572,6 +1572,55 @@ module leds_ctrl(
 
 endmodule
 
+module lsu(
+    input  logic        clk,
+    input  logic        rst_n,
+    input  logic        ex_mem_Write,
+    input  logic        mem_MemRead,
+    input  logic        mem_MemWrite,
+    input  logic        mem_data_write_done,
+    input  logic        mem_uart_write_done,
+    input  logic        mem_data_read_data_valid,
+    input  logic        mem_uart_read_data_valid,
+    input  logic [31:0] mem_mux_read_data,
+    output logic        mem_MemRead_gated,
+    output logic        mem_MemWrite_gated,
+    output logic [31:0] mem_read_data_latched,
+    output logic [31:0] mem_final_read_data
+);
+
+    // --- Architectural Fix for Stalled Memory Ops ---
+    logic mem_op_done;
+
+    // Combine done/valid signals
+    wire any_mem_done_or_valid;
+    assign any_mem_done_or_valid = mem_data_write_done || mem_uart_write_done || mem_data_read_data_valid || mem_uart_read_data_valid;
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            mem_op_done <= 1'b0;
+            mem_read_data_latched <= 32'h0;
+        end else begin
+            if (ex_mem_Write) begin // Pipeline advancing (new instruction enters MEM)
+                mem_op_done <= 1'b0;
+            end else if (any_mem_done_or_valid) begin
+                mem_op_done <= 1'b1;
+                // Latch data for potential read stall
+                if (mem_data_read_data_valid || mem_uart_read_data_valid) begin
+                     mem_read_data_latched <= mem_mux_read_data;
+                end
+            end
+        end
+    end
+
+    assign mem_MemRead_gated = mem_MemRead && !mem_op_done;
+    assign mem_MemWrite_gated = mem_MemWrite && !mem_op_done;
+
+    // Update data path for WB
+    assign mem_final_read_data = mem_op_done ? mem_read_data_latched : mem_mux_read_data;
+
+endmodule
+
 module riscv_cpu(
 `ifndef XILINX_SIMULATOR
     input sys_clk_i,
@@ -1793,6 +1842,12 @@ module riscv_cpu(
     wire [31:0] mem_uart_read_data;
     wire [31:0] mem_leds_read_data;
     wire [31:0] mem_mux_read_data;
+
+    // LSU
+    wire mem_MemRead_gated;
+    wire mem_MemWrite_gated;
+    wire [31:0] mem_read_data_latched;
+    wire [31:0] mem_final_read_data;
 
     wire [31:0] wb_reg_write_data;
     wire [31:0] wb_mux_write_data;
@@ -2019,7 +2074,7 @@ module riscv_cpu(
         .mem_wb_Write(mem_wb_Write),
         .mem_RegWrite(mem_RegWrite),
         .mem_MemtoReg(mem_MemtoReg),
-        .mem_memory_read_data(mem_mux_read_data),
+        .mem_memory_read_data(mem_final_read_data),
         .mem_alu_out(mem_alu_out),
         .mem_rd(mem_rd),
         .mem_CsrtoReg(mem_CsrtoReg),
@@ -2186,10 +2241,27 @@ module riscv_cpu(
         .mux_out(wb_reg_write_data)
     );
 
-    address_decoder address_decoder_0(
-        .address(mem_alu_out),
+    lsu lsu_0(
+        .clk(clk),
+        .rst_n(rst_n),
+        .ex_mem_Write(ex_mem_Write),
         .mem_MemRead(mem_MemRead),
         .mem_MemWrite(mem_MemWrite),
+        .mem_data_write_done(mem_data_write_done),
+        .mem_uart_write_done(mem_uart_write_done),
+        .mem_data_read_data_valid(mem_data_read_data_valid),
+        .mem_uart_read_data_valid(mem_uart_read_data_valid),
+        .mem_mux_read_data(mem_mux_read_data),
+        .mem_MemRead_gated(mem_MemRead_gated),
+        .mem_MemWrite_gated(mem_MemWrite_gated),
+        .mem_read_data_latched(mem_read_data_latched),
+        .mem_final_read_data(mem_final_read_data)
+    );
+
+    address_decoder address_decoder_0(
+        .address(mem_alu_out),
+        .mem_MemRead(mem_MemRead_gated),
+        .mem_MemWrite(mem_MemWrite_gated),
         .sel(address_sel),
         .memRead_en(memRead_en),
         .memWrite_en(memWrite_en)
@@ -2211,6 +2283,7 @@ module riscv_cpu(
 
     assign mem_uart_MemRead = memRead_en && address_sel == SEL_UART;
     assign mem_uart_MemWrite = memWrite_en && address_sel == SEL_UART;
+
     uart uart_0(
         .clk(clk),
         .rst_n(rst_n),

@@ -45,6 +45,12 @@ run-quiet:
 	 echo "$$out" | grep "RESULT"; \
 	 echo "$$out" | grep -q "RESULT $(TEST) PASS"
 
+.PHONY: run-uart
+run-uart:
+	make -s all
+	make -s program/hex/$(TEST)_prog.hex
+	vvp ./simv +HEX=program/hex/$(TEST)_prog.hex +EXP=program/exp/$(TEST).exp +CASE=$(TEST) +QUIET +SUMMARY
+
 # Run all tests and print per-test PASS/FAIL summary
 .PHONY: test-summary
 test-summary: all build-hex-all

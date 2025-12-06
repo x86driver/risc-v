@@ -381,7 +381,17 @@ export PATH=$RISCV/bin:$PATH
 ==============
 
 - [x] git commit 並且把不必要的中介檔都刪掉了
+
+12/04-12/06
+==============
+
 - [ ] 直接寫一個 uart 顯示 A-Z
+現在的問題: 寫一個字元到 uart, 會出現四個 write_done, 從波型也看到 tx 有四個字元
+可能要寫一個 uartlite slave 來用 iverilog debug
+已經寫了 slave, 一樣會出現四個字元
+但 uart_stub_iverilog.sv 卻沒有 要再研究看看
+
+
 - [ ] 試試 synthesis 和 make test-summary 能不能共存
 - [ ] 寫一個新的 tb 來模擬 uart 輸出
 

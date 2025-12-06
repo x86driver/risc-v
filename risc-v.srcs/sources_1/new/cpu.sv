@@ -1,11 +1,12 @@
 `timescale 1ps / 1ps
 // Create Date: 01/20/2025 01:31:56 PM
 
-`ifdef IVERILOG
-`include "uart_stub_iverilog.sv"
-`else
+// `ifdef IVERILOG
+// `include "uart_stub_iverilog.sv"
+// `else
+// `include "uart.sv"
+// `endif
 `include "uart.sv"
-`endif
 `ifdef XILINX_SIMULATOR
 `include "wiredly.v"
 `include "ddr3_model.sv"
@@ -102,24 +103,6 @@ module instruction_memory_multicycle(
     localparam INST_COUNT = 1024;
 
     logic [31:0] mem [INST_COUNT];
-
-`ifdef IVERILOG
-    initial begin
-        string hexfile;
-        if ($value$plusargs("HEX=%s", hexfile)) begin
-            $display("[instruction] Loading program from %0s", hexfile);
-            $readmemh(hexfile, mem);
-        end else begin
-    `ifdef XILINX_SIMULATOR
-            parameter string default_hex_file = "../../../../hello-readmemh.hex";
-    `else
-            parameter string default_hex_file = "../../uart-hello_prog.hex";
-    `endif
-            $display("[instruction] No HEX file specified, using default file: %0s", default_hex_file);
-            $readmemh(default_hex_file, mem);
-        end
-    end
-`endif
 
 `ifndef IVERILOG
     wire [31:0] douta;
@@ -235,25 +218,9 @@ module data_memory_multicycle(
     state_t state;  // 當前狀態
 
     localparam DATA_COUNT = 1024;
-    //logic [31:0] mem [DATA_COUNT];
+    logic [31:0] mem [DATA_COUNT];
 
-// `ifdef XILINX_SIMULATOR
-    initial begin
-        string hexfile;
-        if ($value$plusargs("HEX=%s", hexfile)) begin
-            $display("[data] Loading data from %0s", hexfile);
-            // $readmemh(hexfile, mem);
-        end else begin
-            $display("[data] No HEX file specified, using default values");
-            // mem[0] = 32'hDEAD_BEEF;
-            // mem[1] = 32'h4444_4444;
-            // mem[2] = 32'h8888_8888;
-            // mem[3] = 32'hCCCC_CCCC;
-            // mem[4] = 32'h1010_1010;
-        end
-    end
-// `endif
-
+`ifndef IVERILOG
     wire [31:0] douta;
     blk_mem_gen_4k blk_mem_gen_4k_0(
         .clka(clk),
@@ -262,6 +229,7 @@ module data_memory_multicycle(
         .douta(douta),
         .wea(MemWrite)
     );
+`endif
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -290,13 +258,15 @@ module data_memory_multicycle(
                 end
 
                 WRITE_DATA: begin
+`ifdef IVERILOG
                     if (funct3 == 3'b000) begin // sb
-                        // mem[address[31:2]][address[1:0]*8 +: 8] <= write_data[7:0];
+                        mem[address[31:2]][address[1:0]*8 +: 8] <= write_data[7:0];
                     end else if (funct3 == 3'b001) begin // sh
-                        // mem[address[31:2]][address[1]*16 +: 16] <= write_data[15:0];
+                        mem[address[31:2]][address[1]*16 +: 16] <= write_data[15:0];
                     end else if (funct3 == 3'b010) begin // sw
-                        // mem[address[31:2]] <= write_data;
+                        mem[address[31:2]] <= write_data;
                     end
+`endif
                     state <= WRITE_RESP;
                 end
 
@@ -319,8 +289,11 @@ module data_memory_multicycle(
                     logic [31:0] word;
                     logic [7:0]  byte_sel;
                     logic [15:0] half_sel;
-                    // word = mem[address[31:2]];
+`ifdef IVERILOG
+                    word = mem[address[31:2]];
+`else
                     word = douta;
+`endif
                     byte_sel = word[address[1:0]*8 +: 8];
                     half_sel = address[1] ? word[31:16] : word[15:0];
 

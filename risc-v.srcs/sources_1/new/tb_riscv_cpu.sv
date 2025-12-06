@@ -49,6 +49,18 @@ module tb_riscv_cpu;
         .leds(leds)
     );
 
+    initial begin
+        string hexfile;
+        if ($value$plusargs("HEX=%s", hexfile)) begin
+            $display("[rb_riscv_cpu] Loading program & data from %0s", hexfile);
+            $readmemh(hexfile, dut.inst_mem_multicycle_0.mem);
+            $readmemh(hexfile, dut.data_memory_multicycle_0.mem); // FIXME
+        end else begin
+            $display("[tb_riscv_cpu] Can't loading program, exit!");
+            $finish;
+        end
+    end
+
     // 100MHz clock
     initial begin
         sys_clk_i = 1'b0;
@@ -360,6 +372,7 @@ module tb_riscv_cpu;
             end
         end
         // 一行總結供 Makefile 抽取
+        $display("");
         if (errors == 0) begin
             $display("RESULT %0s PASS", case_name);
         end else begin

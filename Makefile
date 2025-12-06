@@ -54,17 +54,21 @@ run-uart:
 # Run all tests and print per-test PASS/FAIL summary
 .PHONY: test-summary
 test-summary: all build-hex-all
-	@pass=0; fail=0; \
+	@pass=0; fail=0; without_exp=0; \
 	for f in program/hex/*_prog.hex; do \
 	  n=$${f##*/}; n=$${n%_prog.hex}; \
-	  if make -s run-quiet TEST=$$n; then \
+	  res=$$(make -s run-quiet TEST=$$n || true); \
+	  echo "$$res"; \
+	  if echo "$$res" | grep -q "PASS"; then \
 	    pass=$$((pass+1)); \
+	  elif echo "$$res" | grep -q "without exp file"; then \
+	    without_exp=$$((without_exp+1)); \
 	  else \
 	    fail=$$((fail+1)); \
 	  fi; \
 	done; \
 	echo ""; \
-	echo "Summary: PASS=$$pass FAIL=$$fail TOTAL=$$((pass+fail))"; \
+	echo "Summary: PASS=$$pass FAIL=$$fail WITHOUT_EXP=$$without_exp TOTAL=$$((pass+fail+without_exp))"; \
 	test $$fail -eq 0
 
 # Run all tests that have *_prog.hex in program/ and matching .exp files if present

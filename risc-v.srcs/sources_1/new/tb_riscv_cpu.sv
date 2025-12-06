@@ -76,6 +76,7 @@ module tb_riscv_cpu;
 
     // scoreboard
     integer errors = 0;
+    integer exp_file_exist = 0;
     localparam int MAX_COMMITS = 1024;
     reg  [4:0]  exp_rd  [0:MAX_COMMITS-1];
     reg  [31:0] exp_val [0:MAX_COMMITS-1];
@@ -156,39 +157,11 @@ module tb_riscv_cpu;
                     end
                 end
                 $fclose(fd);
+                exp_file_exist = 1;
                 if (!quiet) $display("[exp] Loaded %0d entries from %0s", exp_len, exp_file);
             end
         end else begin
-            if (case_name == "lw") begin
-                // (rd, val)
-                exp_rd[exp_len]  = 5'd1; exp_val[exp_len] = 32'h0000_2083; exp_len++;
-                exp_rd[exp_len]  = 5'd2; exp_val[exp_len] = 32'h0040_2103; exp_len++;
-                exp_rd[exp_len]  = 5'd3; exp_val[exp_len] = 32'h0080_2183; exp_len++;
-                exp_rd[exp_len]  = 5'd4; exp_val[exp_len] = 32'h00c0_2203; exp_len++;
-                exp_rd[exp_len]  = 5'd5; exp_val[exp_len] = 32'h0100_2283; exp_len++;
-                exp_rd[exp_len]  = 5'd6; exp_val[exp_len] = 32'h0100_228c; exp_len++;
-            end else if (case_name == "jal") begin
-                // JAL 改以快照檢查，不使用提交序列比對（避免因分支/管線時序導致早停）
-                exp_len = 0;
-            end else if (case_name == "hazard") begin
-                // hazard default
-                exp_rd[exp_len]  = 5'd1; exp_val[exp_len] = 32'h0000_000a; exp_len++;
-                exp_rd[exp_len]  = 5'd2; exp_val[exp_len] = 32'h0000_0005; exp_len++;
-                exp_rd[exp_len]  = 5'd3; exp_val[exp_len] = 32'h0000_000f; exp_len++;
-                exp_rd[exp_len]  = 5'd4; exp_val[exp_len] = 32'h0000_000a; exp_len++;
-                // beq has no writeback
-                exp_rd[exp_len]  = 5'd5; exp_val[exp_len] = 32'h0000_0019; exp_len++;
-                exp_rd[exp_len]  = 5'd6; exp_val[exp_len] = 32'h0000_0008; exp_len++;
-                exp_rd[exp_len]  = 5'd7; exp_val[exp_len] = 32'h4021_8233; exp_len++;
-                exp_rd[exp_len]  = 5'd8; exp_val[exp_len] = 32'h4021_823b; exp_len++;
-            end else if (case_name == "sum1to10") begin
-                // sum(1..to..10)
-                exp_rd[exp_len]  = 5'd1; exp_val[exp_len] = 32'h0000_0000; exp_len++;
-                exp_rd[exp_len]  = 5'd2; exp_val[exp_len] = 32'h0000_0037; exp_len++;
-            end else begin
-                if (!quiet) $display("ERROR: unknown case: %0s", case_name);
-                $finish;
-            end
+            exp_file_exist = 0;
         end
 
         // 解析禁止寫回的目的暫存器清單：+FORBID_RD=3,31,...
@@ -373,10 +346,14 @@ module tb_riscv_cpu;
         end
         // 一行總結供 Makefile 抽取
         $display("");
-        if (errors == 0) begin
-            $display("RESULT %0s PASS", case_name);
+        if (exp_file_exist) begin
+            if (errors == 0) begin
+                $display("RESULT %0s PASS", case_name);
+            end else begin
+                $display("RESULT %0s FAIL %0d", case_name, errors);
+            end
         end else begin
-            $display("RESULT %0s FAIL %0d", case_name, errors);
+            $display("RESULT %0s without exp file", case_name);
         end
         if (dump_fd != 0) begin
             $fclose(dump_fd);

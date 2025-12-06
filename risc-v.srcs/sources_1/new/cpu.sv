@@ -1167,9 +1167,11 @@ module forwarding_unit(
             // No forward
             ForwardB = 2'b00;
         end
+`ifdef DEBUG_LOG
         if (ForwardA || ForwardB) begin
             $display("[forwarding unit] ForwardA: %h, ForwardB: %h", ForwardA, ForwardB);
         end
+`endif
     end
 
 endmodule

@@ -1,6 +1,10 @@
 `timescale 1ps / 1ps
 // Create Date: 02/15/2025 01:47:54 AM
 
+`ifdef IVERILOG
+`include "axi_uartlite_simple.sv"
+`endif
+
 module axi_uartlite_ctrl(
     input  logic         clk,
     input  logic         rst_n,
@@ -270,7 +274,13 @@ module uart(
 
     wire uart_interrupt;
 
-    axi_uartlite_0 uartlite_0(
+`ifdef IVERILOG
+    `define UART_MODULE_TYPE axi_uartlite_simple
+`else
+    `define UART_MODULE_TYPE axi_uartlite_0
+`endif
+
+    `UART_MODULE_TYPE uartlite_0(
         .s_axi_aclk(clk),
         .s_axi_aresetn(rst_n),
         .s_axi_awaddr(axi_awaddr),

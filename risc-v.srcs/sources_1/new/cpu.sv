@@ -1,11 +1,6 @@
 `timescale 1ps / 1ps
 // Create Date: 01/20/2025 01:31:56 PM
 
-// `ifdef IVERILOG
-// `include "uart_stub_iverilog.sv"
-// `else
-// `include "uart.sv"
-// `endif
 `include "uart.sv"
 `ifdef XILINX_SIMULATOR
 `include "wiredly.v"

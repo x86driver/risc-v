@@ -129,10 +129,14 @@ module axi_uartlite_simple (
                 W_RESP: begin
                     s_axi_awready <= 1'b0;
                     s_axi_wready  <= 1'b0;
-                    s_axi_bvalid  <= 1'b1;
                     s_axi_bresp   <= 2'b00;  // OKAY
 
-                    if (s_axi_bready) begin
+                    // 正確的 AXI 握手：先設置 bvalid，當 bvalid && bready 時完成
+                    if (!s_axi_bvalid) begin
+                        // 剛進入 W_RESP，設置 bvalid
+                        s_axi_bvalid <= 1'b1;
+                    end else if (s_axi_bready) begin
+                        // bvalid 已經是 1 且 bready 也是 1，握手完成
                         s_axi_bvalid <= 1'b0;
                         w_state      <= W_IDLE;
                     end

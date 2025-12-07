@@ -46,191 +46,175 @@ module axi_uartlite_ctrl(
     output logic         write_done
 );
 
-    // 狀態定義
+    // =========================================================================
+    // 狀態機定義
+    // =========================================================================
     typedef enum logic [2:0] {
-        IDLE       = 3'd0,
-        WRITE_IDLE = 3'd1,
-        WAIT_B     = 3'd2,
-        WRITE_DONE = 3'd3,
-        READ_IDLE  = 3'd4,
-        AR_SEND    = 3'd5,
-        WAIT_RDATA = 3'd6,
-        READ_DONE  = 3'd7
+        IDLE        = 3'd0,
+        // 寫入相關狀態
+        WRITE_ADDR  = 3'd1,  // 發送寫入地址和數據
+        WRITE_RESP  = 3'd2,  // 等待寫入回應
+        WRITE_DONE  = 3'd3,  // 寫入完成，產生 write_done 脈衝
+        // 讀取相關狀態
+        READ_ADDR   = 3'd4,  // 發送讀取地址
+        READ_DATA   = 3'd5,  // 等待讀取數據
+        READ_DONE   = 3'd6   // 讀取完成，產生 read_data_valid 脈衝
     } state_t;
 
-    state_t curr_state = IDLE, next_state = IDLE;
+    state_t state;
 
-    logic read_data_valid_reg = 0;
-    logic write_done_reg = 0;
-    logic [31:0] read_data_reg = 0;
-    assign read_data_valid = read_data_valid_reg;
-    assign read_data_out = read_data_reg;
-    assign write_done = write_done_reg;
+    // =========================================================================
+    // 內部暫存器
+    // =========================================================================
+    logic [3:0]  addr_reg;       // 暫存地址
+    logic [31:0] wdata_reg;      // 暫存寫入數據
+    logic [31:0] rdata_reg;      // 暫存讀取數據
+    logic        aw_done;        // 寫地址已被接受
+    logic        w_done;         // 寫數據已被接受
 
-    //-------------------------------------
-    // 狀態暫存器
-    //-------------------------------------
+    // =========================================================================
+    // AXI 保護信號 (固定值)
+    // =========================================================================
+    assign m_axi_awprot = 3'b000;  // Unprivileged, secure, data access
+    assign m_axi_wstrb  = 4'b1111; // 全部 byte 有效
+
+    // =========================================================================
+    // 主狀態機 (單一 always_ff 塊，確保時序一致)
+    // =========================================================================
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            curr_state <= IDLE;
+            state     <= IDLE;
+            addr_reg  <= 4'h0;
+            wdata_reg <= 32'h0;
+            rdata_reg <= 32'h0;
+            aw_done   <= 1'b0;
+            w_done    <= 1'b0;
         end else begin
-            curr_state <= next_state;
-        end
-    end
-
-    //-------------------------------------
-    // 狀態轉移條件
-    //-------------------------------------
-    always_comb begin
-        next_state = curr_state;
-        case (curr_state)
-            IDLE: begin
-                if (read_enable) begin
-                    next_state = READ_IDLE;
-                end else if (write_enable) begin
-                    next_state = WRITE_IDLE;
-                end else begin
-                    next_state = IDLE;
-                end
-            end
-            WRITE_IDLE: begin
-                // 等待寫地址 (AW) 和寫資料 (W) 同時被 slave 接受
-                if (m_axi_awready && m_axi_wready) begin
-                    next_state = WAIT_B;
-                end
-            end
-
-            WAIT_B: begin
-                // 等待寫回應 (BVALID)
-                if (m_axi_bvalid) begin
-                    next_state = WRITE_DONE;
-                end
-            end
-
-            WRITE_DONE: begin
-                // 完成後就不再動作
-                next_state = IDLE;
-            end
-
-            READ_IDLE: begin
-                if (read_enable) begin
-                    next_state = AR_SEND;
-                end
-            end
-
-            AR_SEND: begin
-                if (m_axi_arready) begin
-                    next_state = WAIT_RDATA;
-                end
-            end
-
-            WAIT_RDATA: begin
-                if (m_axi_rvalid) begin
-                    next_state = READ_DONE;
-                end
-            end
-
-            READ_DONE: begin
-                next_state = IDLE;
-            end
-        endcase
-    end
-
-    //-------------------------------------
-    // 輸出控制與暫存器操作
-    //-------------------------------------
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            m_axi_awvalid <= 1'b0;
-            m_axi_awaddr  <= 4'h0;
-            m_axi_awprot  <= 3'b000;
-
-            m_axi_wvalid  <= 1'b0;
-            m_axi_wdata   <= 32'h0;
-            m_axi_wstrb   <= 4'hF;
-
-            m_axi_bready  <= 1'b0;
-
-            m_axi_araddr  <= 0;
-            m_axi_arvalid <= 0;
-            m_axi_rready  <= 0;
-
-            read_data_reg <= 0;
-            write_done_reg <= 1'b0;
-        end
-        else begin
-            write_done_reg      <= 1'b0;
-            case (curr_state)
+            case (state)
                 IDLE: begin
-                end
-
-                // 初始狀態，準備好 AWVALID / WVALID
-                // 要寫的地址(0x4) 和資料(0x55) 在這裡設定
-                WRITE_IDLE: begin
-                    // Assert AWVALID / WVALID
-                    m_axi_awvalid <= 1'b1;
-                    m_axi_awaddr  <= write_address[3:0];   // UartLite TX FIFO register offset
-                    m_axi_awprot  <= 3'b000;  // 一般寫操作，保留為 000
-
-                    m_axi_wvalid  <= 1'b1;
-                    m_axi_wdata   <= write_data;  // 資料放在最低 8 bits
-                    m_axi_wstrb   <= 4'hF;    // 全部 byte lane 都可寫
-
-                    m_axi_bready  <= 1'b0;    // 目前先不用回應
-                end
-
-                // 寫地址、資料都 handshake 完成後，等待 BVALID
-                WAIT_B: begin
-                    // AW 與 W 已經送出，不再有效
-                    m_axi_awvalid <= 1'b0;
-                    m_axi_wvalid  <= 1'b0;
-                    // 準備接收回應
-                    m_axi_bready  <= 1'b1;
-
-                    if (m_axi_bvalid) begin
-                        // 產生一拍脈衝
-                        write_done_reg <= 1'b1;
+                    aw_done <= 1'b0;
+                    w_done  <= 1'b0;
+                    if (write_enable) begin
+                        // 鎖存寫入地址和數據，然後開始傳輸
+                        addr_reg  <= write_address[3:0];
+                        wdata_reg <= write_data;
+                        state     <= WRITE_ADDR;
+                        $display("[UART %0t] IDLE->WRITE_ADDR: addr=%h data=%h", $time, write_address[3:0], write_data);
+                    end else if (read_enable) begin
+                        // 鎖存讀取地址，然後開始傳輸
+                        addr_reg <= read_address[3:0];
+                        state    <= READ_ADDR;
+                        $display("[UART %0t] IDLE->READ_ADDR: addr=%h", $time, read_address[3:0]);
                     end
                 end
 
-                // 寫操作完成
+                // =============================================================
+                // 寫入流程
+                // =============================================================
+                WRITE_ADDR: begin
+                    // 追蹤寫地址是否已被接受
+                    if (m_axi_awvalid && m_axi_awready) begin
+                        aw_done <= 1'b1;
+                        $display("[UART %0t] WRITE_ADDR: aw handshake done", $time);
+                    end
+                    // 追蹤寫數據是否已被接受
+                    if (m_axi_wvalid && m_axi_wready) begin
+                        w_done <= 1'b1;
+                        $display("[UART %0t] WRITE_ADDR: w handshake done, wdata=%h", $time, wdata_reg);
+                    end
+                    // 當兩者都完成後，進入等待回應狀態
+                    if ((aw_done || (m_axi_awvalid && m_axi_awready)) &&
+                        (w_done  || (m_axi_wvalid  && m_axi_wready))) begin
+                        state <= WRITE_RESP;
+                        $display("[UART %0t] WRITE_ADDR->WRITE_RESP", $time);
+                    end
+                end
+
+                WRITE_RESP: begin
+                    // 等待寫回應
+                    if (m_axi_bvalid) begin
+                        state <= WRITE_DONE;
+                        $display("[UART %0t] WRITE_RESP->WRITE_DONE: bvalid=1", $time);
+                    end
+                end
+
                 WRITE_DONE: begin
-                    // 不再需要 bready，或你也可以一直拉高
-                    m_axi_bready <= 1'b0;
+                    // 產生 write_done 脈衝後回到 IDLE
+                    // 這個狀態確保 write_done 持續一個完整週期
+                    state   <= IDLE;
+                    aw_done <= 1'b0;
+                    w_done  <= 1'b0;
+                    $display("[UART %0t] WRITE_DONE->IDLE: write_done pulse!", $time);
                 end
 
-                READ_IDLE: begin
-                    read_data_valid_reg <= 1'b0;
-                    m_axi_araddr <= read_address[3:0];
-                    m_axi_arvalid <= 1'b0;
-                    m_axi_rready <= 1'b0;
+                // =============================================================
+                // 讀取流程
+                // =============================================================
+                READ_ADDR: begin
+                    // 等待讀地址被接受
+                    if (m_axi_arvalid && m_axi_arready) begin
+                        state <= READ_DATA;
+                    end
                 end
 
-                AR_SEND: begin
-                    read_data_valid_reg <= 1'b0;
-                    m_axi_arvalid <= 1'b1;
-                    m_axi_rready <= 1'b0;
-                end
-
-                WAIT_RDATA: begin
-                    read_data_valid_reg <= 1'b0;
-                    m_axi_arvalid <= 1'b0;
-                    m_axi_rready <= 1'b1;
-
+                READ_DATA: begin
+                    // 等待讀數據返回
                     if (m_axi_rvalid) begin
-                        read_data_valid_reg <= 1'b1;
-                        read_data_reg <= m_axi_rdata;
+                        rdata_reg <= m_axi_rdata;
+                        state     <= READ_DONE;
                     end
                 end
 
                 READ_DONE: begin
-                    read_data_valid_reg <= 1'b0;
-                    m_axi_arvalid <= 1'b0;
-                    m_axi_rready <= 1'b0;
+                    // 產生 read_data_valid 脈衝後回到 IDLE
+                    state <= IDLE;
+                end
+
+                default: begin
+                    state <= IDLE;
                 end
             endcase
         end
     end
+
+
+    // =========================================================================
+    // AXI 寫地址通道輸出
+    // =========================================================================
+    assign m_axi_awaddr  = addr_reg;
+    assign m_axi_awvalid = (state == WRITE_ADDR) && !aw_done;
+
+    // =========================================================================
+    // AXI 寫數據通道輸出
+    // =========================================================================
+    assign m_axi_wdata  = wdata_reg;
+    assign m_axi_wvalid = (state == WRITE_ADDR) && !w_done;
+
+    // =========================================================================
+    // AXI 寫回應通道輸出
+    // =========================================================================
+    assign m_axi_bready = (state == WRITE_RESP);
+
+    // =========================================================================
+    // AXI 讀地址通道輸出
+    // =========================================================================
+    assign m_axi_araddr  = addr_reg;
+    assign m_axi_arvalid = (state == READ_ADDR);
+
+    // =========================================================================
+    // AXI 讀數據通道輸出
+    // =========================================================================
+    assign m_axi_rready = (state == READ_DATA);
+
+    // =========================================================================
+    // CPU 接口輸出
+    // =========================================================================
+    // 寫入完成信號 - 在 WRITE_DONE 狀態產生一個週期的脈衝
+    assign write_done = (state == WRITE_DONE);
+
+    // 讀取完成信號 - 在 READ_DONE 狀態產生一個週期的脈衝
+    assign read_data_valid = (state == READ_DONE);
+    assign read_data_out   = rdata_reg;
 
 endmodule
 

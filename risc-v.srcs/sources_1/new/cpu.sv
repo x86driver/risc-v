@@ -82,18 +82,17 @@ module instruction_memory_multicycle(
     input logic init_calib_complete
 );
 
-    typedef enum logic [3:0] {
-        IDLE           = 4'd0,  // 空閒狀態
-        WRITE_ADDR     = 4'd1,  // 發送寫地址
-        WRITE_DATA     = 4'd2,  // 發送寫數據
-        WRITE_RESP     = 4'd3,  // 等待寫響應
-        WRITE_DONE     = 4'd4,
-        READ_ADDR      = 4'd5,  // 發送讀地址
-        READ_DATA      = 4'd6,  // 接收讀數據
-        READ_DONE      = 4'd7
+    typedef enum logic [2:0] {
+        IDLE           = 3'd0,  // 空閒狀態
+        READ_ADDR      = 3'd1,  // 發送讀地址（Block RAM 接收地址）
+        READ_WAIT      = 3'd2,  // 等待 Block RAM 輸出（Block RAM 需要 1 週期延遲）
+        READ_DATA      = 3'd3,  // 接收讀數據
+        READ_VALID     = 3'd4   // 保持 valid 直到地址變化
     } state_t;
 
     state_t state;  // 當前狀態
+    logic [31:0] last_address;  // 記錄上次讀取的地址
+    logic read_data_valid_reg;  // 寄存器版本
 
     localparam INST_COUNT = 1024;
 
@@ -108,51 +107,40 @@ module instruction_memory_multicycle(
     );
 `endif
 
+    // 組合邏輯：當地址變化時，立即無效化 read_data_valid
+    assign read_data_valid = read_data_valid_reg && (address == last_address);
+    assign write_done = 1'b0;  // 這個模組不支持寫入
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state <= IDLE;
             read_data <= 0;
-            read_data_valid <= 0;
-            write_done <= 0;
+            read_data_valid_reg <= 0;
+            last_address <= 32'hFFFFFFFF;  // 無效地址
         end else begin
             case (state)
                 IDLE: begin
-                    read_data <= 32'h0;
-                    read_data_valid <= 0;
-                    write_done <= 0;
-                    if (init_calib_complete) begin
-                        if (MemRead) begin
-                            state <= READ_ADDR;
-                        end else if (MemWrite) begin
-                            state <= WRITE_ADDR;
-                        end else begin
-                            state <= IDLE;
-                        end
+                    read_data_valid_reg <= 0;
+                    if (init_calib_complete && MemRead) begin
+                        state <= READ_ADDR;
                     end
                 end
 
-                WRITE_ADDR: begin
-                    state <= WRITE_DATA;
-                end
-
-                WRITE_DATA: begin
-                    mem[address[31:2]] <= write_data;
-                    state <= WRITE_RESP;
-                end
-
-                WRITE_RESP: begin
-                    write_done <= 1;
-                    state <= WRITE_DONE;
-                end
-
-                WRITE_DONE: begin
-                    write_done <= 0;
-                    state <= IDLE;
-                end
-
                 READ_ADDR: begin
-                    read_data <= 32'h0;
-                    read_data_valid <= 0;
+                    // 地址已經送到 Block RAM，等待一個週期
+                    read_data_valid_reg <= 0;
+`ifdef IVERILOG
+                    // Icarus: 內存是組合邏輯，可以直接讀取
+                    state <= READ_DATA;
+`else
+                    // Vivado: Block RAM 需要一個週期延遲
+                    state <= READ_WAIT;
+`endif
+                end
+
+                READ_WAIT: begin
+                    // 這個狀態只在 Vivado 中使用，等待 Block RAM 輸出
+                    read_data_valid_reg <= 0;
                     state <= READ_DATA;
                 end
 
@@ -166,14 +154,18 @@ module instruction_memory_multicycle(
 `else
                     read_data <= douta;
 `endif
-                    read_data_valid <= 1;
-                    state <= READ_DONE;
+                    read_data_valid_reg <= 1;
+                    last_address <= address;
+                    state <= READ_VALID;  // 進入保持狀態
                 end
 
-                READ_DONE: begin
-                    read_data <= 32'h0;
-                    read_data_valid <= 0;
-                    state <= IDLE;
+                READ_VALID: begin
+                    // 當地址變化時，重新讀取
+                    if (address != last_address) begin
+                        read_data_valid_reg <= 0;
+                        state <= READ_ADDR;
+                    end
+                    // 地址不變時，read_data_valid_reg 保持 1
                 end
 
                 default: begin
@@ -349,6 +341,7 @@ endmodule
 
 module register_file(
     input logic clk,
+    input logic rst_n,
     input logic [4:0] read_reg1,
     input logic [4:0] read_reg2,
     input logic [4:0] write_reg,
@@ -359,6 +352,14 @@ module register_file(
 );
 
     logic [31:0] registers [0:31];
+    
+    // 初始化寄存器（用於仿真）
+    initial begin
+        for (int i = 0; i < 32; i++) begin
+            registers[i] = 32'h0;
+        end
+    end
+    
     always_comb begin
         if ((read_reg1 == write_reg) && RegWrite && (write_reg != 5'b0)) begin
             read_data1 = write_data;
@@ -372,11 +373,12 @@ module register_file(
         end
     end
 
-    always_ff @(posedge clk) begin
-        if (RegWrite) begin
-            //$display("[register_file] write_reg: %h, write_data: %h", write_reg, write_data);
-        end
-        if (RegWrite && (write_reg != 5'b0)) begin
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            for (int i = 0; i < 32; i++) begin
+                registers[i] <= 32'h0;
+            end
+        end else if (RegWrite && (write_reg != 5'b0)) begin
             registers[write_reg] <= write_data;
         end
     end
@@ -1167,11 +1169,6 @@ module forwarding_unit(
             // No forward
             ForwardB = 2'b00;
         end
-`ifdef DEBUG_LOG
-        if (ForwardA || ForwardB) begin
-            $display("[forwarding unit] ForwardA: %h, ForwardB: %h", ForwardA, ForwardB);
-        end
-`endif
     end
 
 endmodule
@@ -1484,6 +1481,7 @@ module stall_unit(
             // (因為整條 pipeline 都不動, ID 的指令也不會再改變)
             hazard_control_mux_sel = 1'b1; // or 1'b0, both are fine
         end else if (if_stall) begin
+            // IF stall - 整個流水線 freeze
             PCWrite     = 1'b0;
             if_id_Write = 1'b0;
             id_ex_Write = 1'b0;
@@ -2209,6 +2207,7 @@ module riscv_cpu(
 
     register_file reg_file_0(
         .clk(clk),
+        .rst_n(rst_n),
         .read_reg1(id_inst[19:15]),
         .read_reg2(id_inst[24:20]),
         .write_reg(wb_rd),

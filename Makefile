@@ -1,8 +1,15 @@
 .PHONY: all
 all: simv
 
-simv: risc-v.srcs/sources_1/new/tb_riscv_cpu.sv risc-v.srcs/sources_1/new/cpu.sv risc-v.srcs/sources_1/new/clk_wiz_0_stub.sv
-	iverilog -g2012 -Wall -DIVERILOG -I risc-v.srcs/sources_1/new -o $@ $^
+SIMV_SRCS = \
+	risc-v.srcs/sources_1/new/tb_riscv_cpu.sv \
+	risc-v.srcs/sources_1/new/cpu.sv \
+	risc-v.srcs/sources_1/new/clk_wiz_0_stub.sv
+
+SIMV_DEPS = $(SIMV_SRCS) risc-v.srcs/sources_1/new/axi_uartlite_simple.sv
+
+simv: $(SIMV_DEPS)
+	iverilog -g2012 -Wall -DIVERILOG -I risc-v.srcs/sources_1/new -o $@ $(SIMV_SRCS)
 
 # Build program/main_prog.hex from program/source/main.S with comments
 .PHONY: mainhex

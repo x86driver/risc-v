@@ -99,12 +99,12 @@ module axi_uartlite_ctrl(
                         addr_reg  <= write_address[3:0];
                         wdata_reg <= write_data;
                         state     <= WRITE_ADDR;
-                        $display("[UART %0t] IDLE->WRITE_ADDR: addr=%h data=%h", $time, write_address[3:0], write_data);
+                        //$display("[UART %0t] IDLE->WRITE_ADDR: addr=%h data=%h", $time, write_address[3:0], write_data);
                     end else if (read_enable) begin
                         // 鎖存讀取地址，然後開始傳輸
                         addr_reg <= read_address[3:0];
                         state    <= READ_ADDR;
-                        $display("[UART %0t] IDLE->READ_ADDR: addr=%h", $time, read_address[3:0]);
+                        //$display("[UART %0t] IDLE->READ_ADDR: addr=%h", $time, read_address[3:0]);
                     end
                 end
 
@@ -115,18 +115,18 @@ module axi_uartlite_ctrl(
                     // 追蹤寫地址是否已被接受
                     if (m_axi_awvalid && m_axi_awready) begin
                         aw_done <= 1'b1;
-                        $display("[UART %0t] WRITE_ADDR: aw handshake done", $time);
+                        //$display("[UART %0t] WRITE_ADDR: aw handshake done", $time);
                     end
                     // 追蹤寫數據是否已被接受
                     if (m_axi_wvalid && m_axi_wready) begin
                         w_done <= 1'b1;
-                        $display("[UART %0t] WRITE_ADDR: w handshake done, wdata=%h", $time, wdata_reg);
+                        //$display("[UART %0t] WRITE_ADDR: w handshake done, wdata=%h", $time, wdata_reg);
                     end
                     // 當兩者都完成後，進入等待回應狀態
                     if ((aw_done || (m_axi_awvalid && m_axi_awready)) &&
                         (w_done  || (m_axi_wvalid  && m_axi_wready))) begin
                         state <= WRITE_RESP;
-                        $display("[UART %0t] WRITE_ADDR->WRITE_RESP", $time);
+                        //$display("[UART %0t] WRITE_ADDR->WRITE_RESP", $time);
                     end
                 end
 
@@ -134,7 +134,7 @@ module axi_uartlite_ctrl(
                     // 等待寫回應
                     if (m_axi_bvalid) begin
                         state <= WRITE_DONE;
-                        $display("[UART %0t] WRITE_RESP->WRITE_DONE: bvalid=1", $time);
+                        //$display("[UART %0t] WRITE_RESP->WRITE_DONE: bvalid=1", $time);
                     end
                 end
 
@@ -144,7 +144,7 @@ module axi_uartlite_ctrl(
                     state   <= IDLE;
                     aw_done <= 1'b0;
                     w_done  <= 1'b0;
-                    $display("[UART %0t] WRITE_DONE->IDLE: write_done pulse!", $time);
+                    //$display("[UART %0t] WRITE_DONE->IDLE: write_done pulse!", $time);
                 end
 
                 // =============================================================

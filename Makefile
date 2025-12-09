@@ -26,13 +26,14 @@ test: all
 uart-hello: risc-v.srcs/sources_1/ip/blk_mem_gen_0/uart-hello_prog.coe
 
 risc-v.srcs/sources_1/ip/blk_mem_gen_0/uart-hello_prog.coe: program/source/uart-hello.S
-	riscv64-elf-gcc -march=rv32i -mabi=ilp32 -nostdlib -nostartfiles -Wl,-Ttext=0 -o uart-hello.elf $<
-	riscv64-elf-objcopy --verilog-data-width=4 -O verilog uart-hello.elf uart-hello.bin
-	python3 to_coe.py uart-hello.bin > $@
+	/opt/riscv/bin/riscv64-unknown-elf-gcc -march=rv32i -mabi=ilp32 -nostdlib -nostartfiles -Wl,-Ttext=0 -o uart-hello.elf $<
+	/opt/riscv/bin/riscv64-unknown-elf-objcopy -O binary uart-hello.elf uart-hello.bin
+	python3 scripts/to_coe.py uart-hello.bin > $@
 
 clean:
 	rm -f simv
 	rm -f program/hex/*_prog.hex
+	rm -f risc-v.srcs/sources_1/ip/blk_mem_gen_0/uart-hello_prog.coe
 
 # Parametric single test run: make run TEST=<name>
 # expects program/<name>_prog.hex and optional program/<name>.exp

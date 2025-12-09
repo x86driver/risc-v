@@ -183,7 +183,7 @@ def main() -> None:
         sys.exit(2)
 
     # Ensure required tools are present
-    for tool in ("riscv64-elf-gcc", "riscv64-elf-objdump"):
+    for tool in ("/opt/riscv/bin/riscv64-unknown-elf-gcc", "/opt/riscv/bin/riscv64-unknown-elf-objdump"):
         if shutil.which(tool) is None:
             print(f"error: required tool not found in PATH: {tool}", file=sys.stderr)
             sys.exit(127)
@@ -192,7 +192,7 @@ def main() -> None:
         obj = Path(td) / "a.o"
         # Compile
         gcc_cmd = [
-            "riscv64-elf-gcc",
+            "/opt/riscv/bin/riscv64-unknown-elf-gcc",
             "-nostdlib",
             "-Wl,-Ttext=0",
             "-Wl,--no-relax",
@@ -207,7 +207,7 @@ def main() -> None:
 
         # Disassemble
         objdump_cmd = [
-            "riscv64-elf-objdump",
+            "/opt/riscv/bin/riscv64-unknown-elf-objdump",
             "-d",
             "-M",
             "numeric",

@@ -15,12 +15,7 @@ end:
     jal x0, end
 
 ex0:
-    addi x4, x0, 4
-    addi x5, x0, 0xff
-
-    csrrs x6, mepc, x4
-    csrrs x7, mepc, x5
-    j end
-    # addi x6, x6, 4
-    # csrrw x0, mepc, x6
+    csrr x4, mepc
+    addi x4, x4, 4
+    csrw mepc, x4
     mret

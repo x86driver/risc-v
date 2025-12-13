@@ -385,14 +385,15 @@ export PATH=$RISCV/bin:$PATH
 12/04-12/06
 ==============
 
-- [ ] 直接寫一個 uart 顯示 A-Z
+- [x] 直接寫一個 uart 顯示 A-Z
 現在的問題: 寫一個字元到 uart, 會出現四個 write_done, 從波型也看到 tx 有四個字元
 可能要寫一個 uartlite slave 來用 iverilog debug
 已經寫了 slave, 一樣會出現四個字元
 但 uart_stub_iverilog.sv 卻沒有 要再研究看看
 
+linux 和 mac 的 objcopy 出來的格式不一樣!
 
-- [ ] 試試 synthesis 和 make test-summary 能不能共存
+- [x] 試試 synthesis 和 make test-summary 能不能共存
 - [ ] 寫一個新的 tb 來模擬 uart 輸出
 
 - [ ] 讓 uart 輸出倒數秒數 (一開始可以先從 1 開始往上數)
@@ -404,3 +405,17 @@ export PATH=$RISCV/bin:$PATH
 
 注意：multicycle 的 read 一定要有 READ_DONE 再跳回 IDLE, 因為：
 READ_DONE 狀態把「輸出數據」和「開始新請求」分開到兩個不同的周期，避免了任何可能的時序競爭。
+
+12/11-12/13
+==============
+
+csrr x4, mepc 這一行執行是正確
+但加上 addi x4, x4, 4 就會把 x4 蓋掉回 4
+加兩個 nop 就可以正確取值
+
+所以 fw unit 那邊沒有偵測到 x4 需要 forward
+或者是沒有 stall?
+
+mret 有問題 (請看除錯全流程)
+
+- [x] 把 csr forwarding 移除

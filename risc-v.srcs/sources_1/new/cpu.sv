@@ -399,7 +399,9 @@ module csr_file(
     input  logic [31:0] ex_trap_pc,
     input  logic [31:0] ex_trap_cause,
     input  logic [31:0] ex_trap_tval,
-    output logic [31:0] csr_mtvec
+    input  logic        ex_trap_mret,
+    output logic [31:0] csr_mtvec,
+    output logic [31:0] csr_mepc
 );
 
     logic [31:0] mstatus = 32'h0000_0000;
@@ -412,6 +414,7 @@ module csr_file(
     logic [31:0] mstatus_n, mtvec_n, mepc_n, mcause_n, mtval_n;
 
     assign csr_mtvec = mtvec;
+    assign csr_mepc  = mepc;
 
     // ------------------------------
     // CSR 讀取
@@ -427,7 +430,6 @@ module csr_file(
                 12'h300: csr_read_data = mstatus;
                 default: csr_read_data = 32'h0;
             endcase
-            $display("[csr file] imm12: %h, csr_read_data: %h", id_inst[31:20], csr_read_data);
         end
     end
 
@@ -476,9 +478,12 @@ module csr_file(
             // 注意：這裡用的是 mstatus_n（已反映同拍 CSR 寫入後的值）
             mstatus_n[7]     = mstatus_n[3];  // MPIE <- MIE
             mstatus_n[3]     = 1'b0;          // MIE  <- 0
-            mstatus_n[12:11] = 2'b11;         // MPP  <- M
-            $strobe("[csr file] ex_trap_take: mepc_n: %h", mepc_n);
+            mstatus_n[12:11] = 2'b11;         // PPP  <- M
         end
+
+        //TODO: if (ex_trap_mret) begin
+        //    $display("[csr file] ex_trap_mret: mepc_n: %h", mepc_n);
+        //end
     end
 
     // ------------------------------
@@ -509,22 +514,22 @@ module csr_control_unit(
         CsrWriteImm12 = 0;
         csr_src_is_zimm = 0; // 0: select from register's content, 1: rs1 as a value
         csr_funct3 = 0;
-        if (id_inst[6:0] == 7'b1110011) begin // csr
+        if (id_inst[6:0] == 7'b1110011) begin // system/csr
             csr_funct3 = id_inst[14:12];
-            if (id_inst[14:12] == 3'b000) begin // ecall
+            // ECALL/MRET 是固定編碼；其餘 funct3==000 視為未支援的 SYSTEM 指令（保持預設不寫 CSR）
+            if (id_inst == 32'h0000_0073 || id_inst == 32'h3020_0073) begin // ecall / mret
                 CsrtoReg = 0;
+                CsrWrite = 0;
             end else if (id_inst[14:12] == 3'b001) begin // csrrw
                 CsrtoReg = 1;
                 CsrWrite = 1;
                 CsrWriteImm12 = id_inst[31:20];
                 csr_src_is_zimm = 0;
-                $display("[csr_control_unit] csrwrite: %h, csrwriteimm12: %h", CsrWrite, CsrWriteImm12);
             end else if (id_inst[14:12] == 3'b101) begin // csrrwi
                 CsrtoReg = 1;
                 CsrWrite = 1;
                 CsrWriteImm12 = id_inst[31:20];
                 csr_src_is_zimm = 1;
-                $display("[csr_control_unit] csrrwi: csr_src_is_zimm: %h", csr_src_is_zimm);
             end else if (id_inst[14:12] == 3'b010) begin // csrrs
                 CsrtoReg = 1;
                 CsrWrite = 1;
@@ -680,7 +685,7 @@ module control_unit(
                 decoded_rs1 = inst[19:15];
                 decoded_rs2 = 0;
             end
-            7'b1110011: begin // csr
+            7'b1110011: begin // system/csr
                 ALUSrc = 1;
                 ALUSrcA_sel = 2'b00;
                 MemtoReg = 0;
@@ -693,7 +698,8 @@ module control_unit(
                 isValid = 1;
                 decoded_rs1 = inst[19:15];
                 decoded_rs2 = 0;
-                if (inst[31:20] == 12'h0) begin // ecall
+                // ECALL/MRET 是固定編碼，避免誤把 CSR[0x000]/CSR[0x302] 存取當成 ecall/mret
+                if (inst == 32'h0000_0073 || inst == 32'h3020_0073) begin // ecall / mret
                     RegWrite = 0;
                     decoded_rs1 = 0;
                 end
@@ -870,6 +876,7 @@ module id_ex_pipeline(
     input logic [11:0] id_CsrWriteImm12,
     input logic [31:0] id_csr_read_data,
     input logic [31:0] id_csr_mtvec,
+    input logic [31:0] id_csr_mepc,
     input logic id_csr_src_is_zimm,
     input logic [2:0] id_csr_funct3,
 
@@ -899,6 +906,7 @@ module id_ex_pipeline(
     output logic [11:0] ex_CsrWriteImm12,
     output logic [31:0] ex_csr_read_data,
     output logic [31:0] ex_csr_mtvec,
+    output logic [31:0] ex_csr_mepc,
     output logic ex_csr_src_is_zimm,
     output logic [2:0] ex_csr_funct3
 );
@@ -929,6 +937,7 @@ module id_ex_pipeline(
             ex_CsrWriteImm12 <= 0;
             ex_csr_read_data <= 0;
             ex_csr_mtvec <= 0;
+            ex_csr_mepc <= 0;
             ex_csr_src_is_zimm <= 0;
             ex_csr_funct3 <= 0;
         end else if (id_Flush) begin
@@ -956,6 +965,7 @@ module id_ex_pipeline(
             ex_CsrWriteImm12 <= 0;
             ex_csr_read_data <= 0;
             ex_csr_mtvec <= 0;
+            ex_csr_mepc <= 0;
             ex_csr_src_is_zimm <= 0;
             ex_csr_funct3 <= 0;
         end else if (id_ex_Write) begin
@@ -983,6 +993,7 @@ module id_ex_pipeline(
             ex_CsrWriteImm12 <= id_CsrWriteImm12;
             ex_csr_read_data <= id_csr_read_data;
             ex_csr_mtvec <= id_csr_mtvec;
+            ex_csr_mepc <= id_csr_mepc;
             ex_csr_src_is_zimm <= id_csr_src_is_zimm;
             ex_csr_funct3 <= id_csr_funct3;
         end
@@ -1169,37 +1180,9 @@ module forwarding_unit(
             // No forward
             ForwardB = 2'b00;
         end
-    end
 
-endmodule
-
-module csr_forwarding_unit(
-    input logic  [31:0] id_csr_mtvec,
-    input logic         mem_CsrWrite,
-    input logic  [11:0] mem_CsrWriteImm12,
-    input logic  [31:0] mem_csr_read_data,
-    input logic         wb_CsrWrite,
-    input logic  [11:0] wb_CsrWriteImm12,
-    input logic  [31:0] wb_reg_write_data,
-    output logic [31:0] csr_mtvec_live
-);
-
-    always_comb begin
-        if (mem_CsrWrite) begin
-            $strobe("[csr fw unit] mem_CsrWrite: %h, mem_CsrWriteImm12: %h, mem_csr_read_data: %h",
-                    mem_CsrWrite, mem_CsrWriteImm12, mem_csr_read_data);
-        end
-        if (wb_CsrWrite) begin
-            $strobe("[csr fw unit] wb_CsrWrite: %h, wb_CsrWriteImm12: %h, wb_reg_write_data: %h",
-                    wb_CsrWrite, wb_CsrWriteImm12, wb_reg_write_data);
-        end
-        if (mem_CsrWrite && mem_CsrWriteImm12 == 12'h305) begin
-            csr_mtvec_live = mem_csr_read_data;
-        end else if (wb_CsrWrite && wb_CsrWriteImm12 == 12'h305) begin
-            csr_mtvec_live = wb_reg_write_data;
-        end else begin
-            csr_mtvec_live = id_csr_mtvec;
-        end
+        if (ForwardA != 0) $display("[fw unit] ForwardA: %h", ForwardA);
+        if (ForwardB != 0) $display("[fw unit] ForwardB: %h", ForwardB);
     end
 
 endmodule
@@ -1247,10 +1230,12 @@ module control_hazard_detection_unit(
     input logic [31:0] ex_mux3to1_alu_a_out,
     input logic [31:0] ex_mux3to1_alu_b_out,
     input logic [31:0] ex_csr_mtvec,
+    input logic [31:0] ex_csr_mepc,
     output logic ex_trap_take,
     output logic [31:0] ex_trap_pc,
     output logic [31:0] ex_trap_cause,
     output logic [31:0] ex_trap_tval,
+    output logic ex_trap_mret,
     output logic if_Flush,
     output logic id_Flush,
     output logic pc_branch_sel,
@@ -1261,6 +1246,7 @@ module control_hazard_detection_unit(
     logic is_jal = 0;
     logic is_jalr = 0;
     logic is_ecall = 0;
+    logic is_mret = 0;
 
     always_comb begin
         branch_taken      = 1'b0;
@@ -1270,7 +1256,9 @@ module control_hazard_detection_unit(
         is_jal            = 1'b0;
         is_jalr           = 1'b0;
         is_ecall          = 1'b0;
+        is_mret           = 1'b0;
         ex_trap_take      = 1'b0;
+        ex_trap_mret      = 1'b0;
         ex_trap_pc        = 0;
         ex_trap_cause     = 0;
         ex_trap_tval      = 0;
@@ -1320,11 +1308,14 @@ module control_hazard_detection_unit(
                 branch_taken = 1;
                 is_jalr = 1;
             end
-            7'b1110011: begin // csr
-                if (ex_inst[31:20] == 12'h000) begin // ecall
-                    $strobe("[control_hazard_detection_unit] ecall, ex_inst: %h", ex_inst);
+            7'b1110011: begin // system/csr
+                // ECALL/MRET 是固定編碼，避免誤把 CSR[0x000]/CSR[0x302] 存取當成 ecall/mret
+                if (ex_inst == 32'h0000_0073) begin // ecall
                     branch_taken = 1;
                     is_ecall = 1;
+                end else if (ex_inst == 32'h3020_0073) begin // mret
+                    branch_taken = 1;
+                    is_mret = 1;
                 end
             end
             default: begin
@@ -1344,6 +1335,12 @@ module control_hazard_detection_unit(
                 ex_trap_tval        = 32'd0;
                 pc_branch_target    = ex_csr_mtvec;
                 $strobe("[ecall] target pc: %h, ex_inst: %h", pc_branch_target, ex_inst);
+                if (pc_branch_target == 0) begin
+                    $finish;
+                end
+            end else if (is_mret) begin
+                pc_branch_target    = ex_csr_mepc;
+                $display("[mret] target pc: %h, ex_csr_mepc: %h", pc_branch_target, ex_csr_mepc);
                 if (pc_branch_target == 0) begin
                     $finish;
                 end
@@ -1409,10 +1406,18 @@ module stall_unit(
     logic mem_stall;
     logic if_stall;
 
-    logic is_csr_inst;
+    logic        is_system_inst;
+    logic        is_ecall_inst;
+    logic        is_mret_inst;
+    logic        is_csr_access_inst;
     logic [11:0] id_csr_addr;
-    assign is_csr_inst = (id_inst[6:0] == 7'b1110011) && (id_inst[14:12] != 3'b000); // CSR insts (not ecall/mret)
-    assign id_csr_addr = id_inst[31:20];
+
+    assign is_system_inst = (id_inst[6:0] == 7'b1110011);
+    // ECALL/MRET 是固定編碼，避免誤把非法/其他 SYSTEM 指令誤判
+    assign is_ecall_inst  = (id_inst == 32'h0000_0073);
+    assign is_mret_inst   = (id_inst == 32'h3020_0073);
+    assign is_csr_access_inst = is_system_inst && (id_inst[14:12] != 3'b000);
+    assign id_csr_addr    = id_inst[31:20];
 
     //==========================================================
     // (1) load-use hazard 偵測
@@ -1424,13 +1429,28 @@ module stall_unit(
                 hazard_stall = 1'b1;
             end
         end
-        // CSR Data Hazard
-        if (is_csr_inst && (
-            (ex_CsrWrite && ex_CsrWriteImm12 == id_csr_addr) ||
-            (mem_CsrWrite && mem_CsrWriteImm12 == id_csr_addr) ||
-            (wb_CsrWrite && wb_CsrWriteImm12 == id_csr_addr)
-        )) begin
-            hazard_stall = 1'b1;
+        // CSR / SYSTEM Hazard
+        if (is_system_inst) begin
+            // 對 ECALL/MRET 做「序列化」：只要前面還有任何 CSR write 未退休，就先 stall
+            if ((is_ecall_inst || is_mret_inst) && (ex_CsrWrite || mem_CsrWrite || wb_CsrWrite)) begin
+                hazard_stall = 1'b1;
+            end else if (is_csr_access_inst) begin
+                // CSR access 指令才需要做「同位址 RAW」hazard 比對
+                if (ex_CsrWrite && ex_CsrWriteImm12 == id_csr_addr) begin
+                    hazard_stall = 1'b1;
+                    // 注意: 可能因 delta cycle 而多次觸發，但值是正確的
+                    $display("[CSR hazard @%0t] STALL! id_csr=%h conflicts with EX (ex_CsrWriteImm12=%h)", 
+                             $time, id_csr_addr, ex_CsrWriteImm12);
+                end else if (mem_CsrWrite && mem_CsrWriteImm12 == id_csr_addr) begin
+                    hazard_stall = 1'b1;
+                    $display("[CSR hazard @%0t] STALL! id_csr=%h conflicts with MEM (mem_CsrWriteImm12=%h)", 
+                             $time, id_csr_addr, mem_CsrWriteImm12);
+                end else if (wb_CsrWrite && wb_CsrWriteImm12 == id_csr_addr) begin
+                    hazard_stall = 1'b1;
+                    $display("[CSR hazard @%0t] STALL! id_csr=%h conflicts with WB (wb_CsrWriteImm12=%h)", 
+                             $time, id_csr_addr, wb_CsrWriteImm12);
+                end
+            end
         end
     end
 
@@ -1490,7 +1510,7 @@ module stall_unit(
 
             hazard_control_mux_sel = 1'b1;
         end else if (hazard_stall) begin
-            // === load-use hazard → freeze 前半段(PC/IF_ID) ===
+            // === load-use / CSR hazard → freeze 前半段(PC/IF_ID)，插入 bubble ===
             PCWrite     = 1'b0;   // freeze PC
             if_id_Write = 1'b0;   // freeze IF/ID
             // 讓後半段繼續
@@ -1498,8 +1518,7 @@ module stall_unit(
             ex_mem_Write= 1'b1;
             mem_wb_Write= 1'b1;
 
-            // 另外必須把當前 ID 階段的指令控制訊號清成 NOP
-            // 用 hazard_control_mux_sel=0 來達成
+            // 插入 bubble：清零控制信號
             hazard_control_mux_sel = 1'b0;
         end else begin
             // === 無任何 stall ===
@@ -1728,6 +1747,7 @@ module riscv_cpu(
     wire [11:0] id_CsrWriteImm12;
     wire [31:0] id_csr_read_data;
     wire [31:0] id_csr_mtvec;
+    wire [31:0] id_csr_mepc;
     wire id_csr_src_is_zimm;
     wire [2:0] id_csr_funct3;
 
@@ -1759,10 +1779,12 @@ module riscv_cpu(
     wire [11:0] ex_CsrWriteImm12;
     wire [31:0] ex_csr_read_data;
     wire [31:0] ex_csr_mtvec;
+    wire [31:0] ex_csr_mepc;
     wire ex_trap_take;
     wire [31:0] ex_trap_pc;
     wire [31:0] ex_trap_cause;
     wire [31:0] ex_trap_tval;
+    wire ex_trap_mret;
     wire ex_csr_src_is_zimm;
     wire [2:0] ex_csr_funct3;
 
@@ -1821,8 +1843,6 @@ module riscv_cpu(
     wire [31:0] wb_csr_read_data;
     wire [2:0] wb_csr_funct3;
 
-    wire [31:0] csr_mtvec_live;
-
     wire [1:0] address_sel;
     wire memRead_en;
     wire memWrite_en;
@@ -1853,6 +1873,12 @@ module riscv_cpu(
     wire hazard_control_mux_sel;
     wire PCWrite_final;
     assign PCWrite_final = pc_branch_sel ? 1'b1 : PCWrite;
+    // 在 hazard_stall 時插入 bubble：以 flush ID/EX 方式把 EX 變成 NOP
+    // (因為控制/分支單元是看 ex_inst 解碼，僅清部分控制訊號不足以阻止分支/陷入被觸發)
+    wire id_ex_bubble;
+    assign id_ex_bubble = !hazard_control_mux_sel; // data hazard bubble (stall_unit 插入)
+    wire id_Flush_final;
+    assign id_Flush_final = id_Flush || id_ex_bubble; // control flush + data-hazard bubble
 
     program_counter pc_module(
         .clk(clk),
@@ -1868,11 +1894,13 @@ module riscv_cpu(
         .ex_imm32(ex_imm32),
         .ex_mux3to1_alu_a_out(mux3to1_alu_a_out),
         .ex_mux3to1_alu_b_out(mux3to1_alu_b_out),
-        .ex_csr_mtvec(csr_mtvec_live),
+        .ex_csr_mtvec(ex_csr_mtvec),
+        .ex_csr_mepc(ex_csr_mepc),
         .ex_trap_take(ex_trap_take),
         .ex_trap_pc(ex_trap_pc),
         .ex_trap_cause(ex_trap_cause),
         .ex_trap_tval(ex_trap_tval),
+        .ex_trap_mret(ex_trap_mret),
 
         .if_Flush(if_Flush),
         .id_Flush(id_Flush),
@@ -1965,7 +1993,7 @@ module riscv_cpu(
         .clk(clk),
         .rst_n(rst_n),
         .id_ex_Write(id_ex_Write),
-        .id_Flush(id_Flush),
+        .id_Flush(id_Flush_final),
 
         .id_ALUSrc(id_ALUSrc),
         .id_ALUSrcA_sel(id_ALUSrcA_sel),
@@ -1993,6 +2021,7 @@ module riscv_cpu(
         .id_CsrWriteImm12(id_CsrWriteImm12),
         .id_csr_read_data(id_csr_read_data),
         .id_csr_mtvec(id_csr_mtvec),
+        .id_csr_mepc(id_csr_mepc),
         .id_csr_src_is_zimm(id_csr_src_is_zimm),
         .id_csr_funct3(id_csr_funct3),
 
@@ -2022,6 +2051,7 @@ module riscv_cpu(
         .ex_CsrWriteImm12(ex_CsrWriteImm12),
         .ex_csr_read_data(ex_csr_read_data),
         .ex_csr_mtvec(ex_csr_mtvec),
+        .ex_csr_mepc(ex_csr_mepc),
         .ex_csr_src_is_zimm(ex_csr_src_is_zimm),
         .ex_csr_funct3(ex_csr_funct3)
     );
@@ -2133,17 +2163,6 @@ module riscv_cpu(
         .ForwardB(ForwardB)
     );
 
-    csr_forwarding_unit csr_forwarding_unit_0(
-        .id_csr_mtvec(id_csr_mtvec),
-        .mem_CsrWrite(mem_CsrWrite),
-        .mem_CsrWriteImm12(mem_CsrWriteImm12),
-        .mem_csr_read_data(mem_alu_out),
-        .wb_CsrWrite(wb_CsrWrite),
-        .wb_CsrWriteImm12(wb_CsrWriteImm12),
-        .wb_reg_write_data(wb_reg_write_data),
-        .csr_mtvec_live(csr_mtvec_live)
-    );
-
     alu_control alu_control_0(
         .aluop(ex_ALUOp),
         .isSub(ex_isSub),
@@ -2152,19 +2171,23 @@ module riscv_cpu(
         .alu_ctrl(alu_ctrl)
     );
 
+    // MEM 階段的最終寫回數據（考慮 CSR）
+    wire [31:0] mem_mux_write_data;
+    assign mem_mux_write_data = mem_CsrtoReg ? mem_csr_read_data : mem_alu_out;
+
     mux3to1 mux3to1_alu_a(
         .sel(ForwardA),
         .A(ex_read_data1),
-        .B(wb_reg_write_data),
-        .C(mem_alu_out),
+        .B(wb_mux_write_data),      // 修復：使用最終寫回數據（包含 CSR）
+        .C(mem_mux_write_data),     // 修復：使用最終寫回數據（包含 CSR）
         .mux_out(mux3to1_alu_a_out_forward)
     );
 
     mux3to1 mux3to1_alu_b(
         .sel(ForwardB),
         .A(ex_read_data2),
-        .B(wb_reg_write_data),
-        .C(mem_alu_out),
+        .B(wb_mux_write_data),      // 修復：使用最終寫回數據（包含 CSR）
+        .C(mem_mux_write_data),     // 修復：使用最終寫回數據（包含 CSR）
         .mux_out(mux3to1_alu_b_out)
     );
 
@@ -2230,7 +2253,9 @@ module riscv_cpu(
         .ex_trap_pc(ex_trap_pc),
         .ex_trap_cause(ex_trap_cause),
         .ex_trap_tval(ex_trap_tval),
-        .csr_mtvec(id_csr_mtvec)
+        .ex_trap_mret(ex_trap_mret),
+        .csr_mtvec(id_csr_mtvec),
+        .csr_mepc(id_csr_mepc)
     );
 
     mux2to1 mux2to1_memory(

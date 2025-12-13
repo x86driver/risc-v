@@ -253,29 +253,29 @@ module tb_riscv_cpu;
                     // 每次提交事件都記錄（允許連續同 rd、同 val 的合法寫回）
                     last_commit_valid <= 1'b1;
                     last_commit_rd   <= dut.wb_rd;
-                    last_commit_val  <= dut.wb_reg_write_data;
+                    last_commit_val  <= dut.wb_mux_write_data;
 
-                    if (!quiet || verbose) $display("COMMIT[%0d]: rd=%0d val=%08x mem=%0d mem_valid=%0d", seen, dut.wb_rd, dut.wb_reg_write_data, dut.wb_MemtoReg, (^dut.wb_memory_read_data === 1'bx) ? 0 : 1);
+                    if (!quiet || verbose) $display("COMMIT[%0d]: rd=%0d val=%08x mem=%0d mem_valid=%0d", seen, dut.wb_rd, dut.wb_mux_write_data, dut.wb_MemtoReg, (^dut.wb_memory_read_data === 1'bx) ? 0 : 1);
                     if (dump_fd != 0) begin
-                        $fwrite(dump_fd, "%0d %08x\n", dut.wb_rd, dut.wb_reg_write_data);
+                        $fwrite(dump_fd, "%0d %08x\n", dut.wb_rd, dut.wb_mux_write_data);
                     end
                     if (dut.wb_rd === 5'd3) x3_seen = 1'b1;
                     if (forbid_rd_mask[dut.wb_rd]) begin
-                        if (!quiet) $display("ERROR: forbidden rd write: rd=%0d val=%08x", dut.wb_rd, dut.wb_reg_write_data);
+                        if (!quiet) $display("ERROR: forbidden rd write: rd=%0d val=%08x", dut.wb_rd, dut.wb_mux_write_data);
                         errors = errors + 1;
                     end
 
                     if (compare_commits) begin
                         if (seen >= exp_len) begin
-                            if (!quiet) $display("ERROR: unexpected commit: rd=%0d val=%08x (more than expected %0d)", dut.wb_rd, dut.wb_reg_write_data, exp_len);
+                            if (!quiet) $display("ERROR: unexpected commit: rd=%0d val=%08x (more than expected %0d)", dut.wb_rd, dut.wb_mux_write_data, exp_len);
                             errors = errors + 1;
                         end else begin
                             if (dut.wb_rd !== exp_rd[seen]) begin
                                 if (!quiet) $display("ERROR: commit[%0d] rd mismatch: got=%0d exp=%0d", seen, dut.wb_rd, exp_rd[seen]);
                                 errors = errors + 1;
                             end
-                            if (dut.wb_reg_write_data !== exp_val[seen]) begin
-                                if (!quiet) $display("ERROR: commit[%0d] val mismatch: got=%08x exp=%08x", seen, dut.wb_reg_write_data, exp_val[seen]);
+                            if (dut.wb_mux_write_data !== exp_val[seen]) begin
+                                if (!quiet) $display("ERROR: commit[%0d] val mismatch: got=%08x exp=%08x", seen, dut.wb_mux_write_data, exp_val[seen]);
                                 errors = errors + 1;
                             end
                         end
@@ -337,7 +337,7 @@ module tb_riscv_cpu;
             end
         end
 
-        if (!quiet) begin
+        if (!quiet && exp_file_exist) begin
             if (errors == 0) begin
                 $display("\nTEST PASSED\n");
             end else begin

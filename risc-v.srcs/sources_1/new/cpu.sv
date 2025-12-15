@@ -1348,10 +1348,7 @@ module control_hazard_detection_unit(
                 pc_branch_target = ex_pc + ex_imm32;  // 計算好的目標位址
             end
             if_Flush         = 1'b1;              // flush IF 取指
-            // 對於 JAL, JALR 指令，不要在同一週期 flush ID，讓 JAL 先完成寫回
-            if (!is_jal && !is_jalr) begin
-                id_Flush         = 1'b1;          // flush ID 解碼
-            end
+            id_Flush         = 1'b1;              // flush ID 解碼
         end
     end
 
@@ -1878,7 +1875,10 @@ module riscv_cpu(
     wire id_ex_bubble;
     assign id_ex_bubble = !hazard_control_mux_sel; // data hazard bubble (stall_unit 插入)
     wire id_Flush_final;
-    assign id_Flush_final = id_Flush || id_ex_bubble; // control flush + data-hazard bubble
+    // 控制 hazard 的 flush 只能在 ID/EX 允許前進時做。
+    // 否則在 if_stall/mem_stall 全線 freeze 時，branch/jal/jalr 會因為 id_Flush 把自己沖成 NOP，
+    // 導致「PC 已跳轉但 link 寫回消失」這類錯誤。
+    assign id_Flush_final = (id_Flush && id_ex_Write) || id_ex_bubble; // control flush + data-hazard bubble
 
     program_counter pc_module(
         .clk(clk),

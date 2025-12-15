@@ -104,6 +104,116 @@ module tb_riscv_cpu;
     bit        verbose;
     bit        summary_only;
 
+    // ------------------------------------------------------------
+    // Micro-architecture correctness checks (SVA-style invariants)
+    // ------------------------------------------------------------
+    localparam logic [31:0] NOP = 32'h0000_0013;
+
+    // Sample "pre-state" at posedge (before NBA updates), then check "post-state" at negedge.
+    logic [31:0] pc_pre;
+    logic        pcwrite_pre;
+    logic [31:0] id_pc_pre;
+    logic [31:0] id_inst_pre;
+    logic        if_id_write_pre;
+    logic        if_flush_pre;
+
+    logic [31:0] ex_inst_pre;
+    logic        id_ex_write_pre;
+    logic        id_flush_final_pre;
+    logic        id_ex_bubble_pre;
+
+    always @(posedge sys_clk_i) begin
+        if (!btn_reset_n) begin
+            pc_pre            <= '0;
+            pcwrite_pre       <= 1'b0;
+            id_pc_pre         <= '0;
+            id_inst_pre       <= NOP;
+            if_id_write_pre   <= 1'b0;
+            if_flush_pre      <= 1'b0;
+            ex_inst_pre       <= NOP;
+            id_ex_write_pre   <= 1'b0;
+            id_flush_final_pre<= 1'b0;
+            id_ex_bubble_pre  <= 1'b0;
+        end else begin
+            // All of these are internal wires in riscv_cpu; safe to observe hierarchically in TB.
+            pc_pre            <= dut.pc_current;
+            pcwrite_pre       <= dut.PCWrite_final;
+            id_pc_pre         <= dut.id_pc;
+            id_inst_pre       <= dut.id_inst;
+            if_id_write_pre   <= dut.if_id_Write;
+            if_flush_pre      <= dut.if_Flush;
+            ex_inst_pre       <= dut.ex_inst;
+            id_ex_write_pre   <= dut.id_ex_Write;
+            id_flush_final_pre<= dut.id_Flush_final;
+            id_ex_bubble_pre  <= dut.id_ex_bubble;
+
+            // Bubble must imply ID/EX flush is asserted (contract for "insert NOP into EX").
+            if (dut.id_ex_bubble === 1'b1) begin
+                if (dut.id_Flush_final !== 1'b1) begin
+                    $display("ASSERT FAIL @%0t: id_ex_bubble=1 but id_Flush_final!=1", $time);
+                    errors = errors + 1;
+                end
+            end
+        end
+    end
+
+    always @(negedge sys_clk_i) begin
+        if (btn_reset_n) begin
+            // (A) PC freeze: if PCWrite_final was 0 at posedge, pc_current must not change.
+            if (pcwrite_pre === 1'b0) begin
+                if (dut.pc_current !== pc_pre) begin
+                    $display("ASSERT FAIL @%0t: PC changed while PCWrite_final=0 (pre=%h post=%h)", $time, pc_pre, dut.pc_current);
+                    errors = errors + 1;
+                end
+            end
+
+            // (B) IF/ID freeze/flush behavior.
+            // - if_Flush has priority over if_id_Write in if_id_pipeline.
+            if (if_flush_pre === 1'b1) begin
+                if (dut.id_inst !== NOP || dut.id_pc !== 32'h0) begin
+                    $display("ASSERT FAIL @%0t: IF/ID flush expected NOP/pc=0 (id_inst=%h id_pc=%h)", $time, dut.id_inst, dut.id_pc);
+                    errors = errors + 1;
+                end
+            end else if (if_id_write_pre === 1'b0) begin
+                if (dut.id_inst !== id_inst_pre || dut.id_pc !== id_pc_pre) begin
+                    $display("ASSERT FAIL @%0t: IF/ID changed while if_id_Write=0 (pre_inst=%h post_inst=%h)", $time, id_inst_pre, dut.id_inst);
+                    errors = errors + 1;
+                end
+            end
+
+            // (C) ID/EX flush (control flush or data-hazard bubble) must create a real NOP in EX.
+            if (id_flush_final_pre === 1'b1) begin
+                if (dut.ex_inst !== NOP) begin
+                    $display("ASSERT FAIL @%0t: ID/EX flush expected ex_inst=NOP (ex_inst=%h)", $time, dut.ex_inst);
+                    errors = errors + 1;
+                end
+                if (dut.ex_Branch !== 1'b0) begin
+                    $display("ASSERT FAIL @%0t: ID/EX flush expected ex_Branch=0 (ex_Branch=%b)", $time, dut.ex_Branch);
+                    errors = errors + 1;
+                end
+            end else if (id_ex_write_pre === 1'b0) begin
+                // If not flushing and write-enable is low, EX stage regs must hold.
+                if (dut.ex_inst !== ex_inst_pre) begin
+                    $display("ASSERT FAIL @%0t: EX changed while id_ex_Write=0 (pre=%h post=%h)", $time, ex_inst_pre, dut.ex_inst);
+                    errors = errors + 1;
+                end
+            end
+
+            // (D) When a data-hazard bubble was inserted, EX must not trigger PC redirect/trap.
+            // (This is exactly the class of bug fixed by making bubble a real NOP.)
+            if (id_ex_bubble_pre === 1'b1) begin
+                if (dut.pc_branch_sel !== 1'b0) begin
+                    $display("ASSERT FAIL @%0t: bubble in EX but pc_branch_sel asserted", $time);
+                    errors = errors + 1;
+                end
+                if (dut.ex_trap_take !== 1'b0) begin
+                    $display("ASSERT FAIL @%0t: bubble in EX but ex_trap_take asserted", $time);
+                    errors = errors + 1;
+                end
+            end
+        end
+    end
+
     // wait and check result (commit-sequence scoreboard)
     initial begin
         integer i;

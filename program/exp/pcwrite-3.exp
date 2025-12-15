@@ -1,0 +1,36 @@
+# pcwrite-3.exp
+# 依照「實際提交（commit）順序」列出 rd/value。
+# 此測試涵蓋：
+# - lw-use hazard 插入 bubble（bubble 必須是 NOP，避免提早 branch）
+# - mem_stall 與 beq/jal/jalr 同拍交錯（PCWrite_final override 行為）
+# - jal/jalr link 寫回
+
+31 00000000  # x31 = 0 (pass counter)
+10 00000100  # x10 = 0x100 base
+12 00000001  # x12 = 1
+
+4  00000000  # x4 = 0
+4  00000001  # x4 = lw [0x100] = 1
+31 00000001  # PASS1
+
+5  00000001  # x5 = lw [0x100]
+31 00000002  # PASS2
+
+6  00000001  # x6 = lw [0x100]
+7  00000040  # x7 = jal link (pc+4)
+7  00000041  # x7 = x7 + 1
+31 00000003  # PASS3
+
+8  00000000  # x8 = lui %hi(C4_tgt)
+8  00000060  # x8 = addi %lo(C4_tgt)
+9  0000005c  # x9 = jalr link (pc+4)
+9  0000005d  # x9 = x9 + 1
+31 00000004  # PASS4
+
+11 00000000  # x11 = lui %hi(C5_tgt)
+11 00000080  # x11 = addi %lo(C5_tgt)
+13 00000080  # x13 = lw [0x108] = C5_tgt
+31 00000005  # PASS5
+
+31 00000006  # PASS6
+5  00000006  # x5 = x31 (final pass count)

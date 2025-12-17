@@ -63,6 +63,23 @@
 | LUI   | 0110111 | 載入高位立即數：rd = imm << 12 |
 | AUIPC | 0010111 | PC 加高位立即數：rd = PC + (imm << 12) |
 
+### CSR 指令
+| 指令  | 操作碼 | funct3 | 說明 |
+|--------|---------|-------|-----|
+| CSRRW  | 1110011 | 001 | R[rd] = CSR; CSR = R[rs1] |
+| CSRRS  | 1110011 | 010 | R[rd] = CSR; CSR = CSR \| R[rs1] |
+| CSRRC  | 1110011 | 011 | R[rd] = CSR; CSR = CSR & ~R[rs1] |
+| CSRRWI | 1110011 | 101 | R[rd] = CSR; CSR = zimm |
+| CSRRSI | 1110011 | 110 | R[rd] = CSR; CSR = CSR \| zimm |
+| CSRRCI | 1110011 | 111 | R[rd] = CSR; CSR = CSR & ~zimm |
+
+### System 指令
+| 指令  | 操作碼 | funct3 | 說明 |
+|--------|---------|-------|-----|
+| ECALL | 1110011 | 000 | 環境呼叫，trap 進入 mtvec（固定編碼 `0x00000073`） |
+| MRET  | 1110011 | 000 | 從 trap 返回：PC = mepc（固定編碼 `0x30200073`） |
+
+
 ## 實作細節
 
 ### 1. ALU 運算單元
@@ -85,6 +102,11 @@
 - U-Type：20 位元左移 12 位
 - J-Type：21 位元有號擴展（用於 JAL）
 
+### 5. CSR
+- 對 ECALL/MRET 做「序列化」：只要前面還有任何 CSR write 未退休，就先 stall
+- CSR access 指令才需要做「同位址 RAW」hazard 比對
+- Spec 定義：CSRRS/CSRRC 若 rs1=x0 → 只讀不寫；CSRRSI/CSRRCI 若 zimm=0 → 只讀不寫；CSRRW/CSRRWI 則是無條件寫入
+
 ## 注意事項
 - 所有指令都是 32 位元寬度
 - 支援 32 個通用暫存器（x0-x31），其中 x0 固定為 0
@@ -93,13 +115,6 @@
 
 ## 尚未支援的指令
 
-ecall
 ebreak
 fence
 fence.i
-csrrw
-csrrs
-csrrc
-csrrwi
-csrrsi
-csrrci

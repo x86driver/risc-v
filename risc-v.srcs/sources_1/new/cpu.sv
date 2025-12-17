@@ -456,13 +456,22 @@ module csr_file(
                     12'h300: mstatus_n = csr_write_data;                // 先不嚴格檢查各位元
                     default: ; // 其他 CSR 暫不處理
                 endcase
-            end else if (csr_funct3 == 3'b010) begin // csrrs
+            end else if (csr_funct3 == 3'b010 || csr_funct3 == 3'b110) begin // csrrs / csrrsi
                 case (CsrWriteImm12)
                     12'h305: mtvec_n   |= {csr_write_data[31:2], 2'b00}; // 僅支援 MODE=Direct，強制對齊
                     12'h341: mepc_n    |= {csr_write_data[31:1], 1'b0};  // 對齊 bit0=0
                     12'h342: mcause_n  |= csr_write_data;
                     12'h343: mtval_n   |= csr_write_data;
                     12'h300: mstatus_n |= csr_write_data;                // 先不嚴格檢查各位元
+                    default: ; // 其他 CSR 暫不處理
+                endcase
+            end else if (csr_funct3 == 3'b011 || csr_funct3 == 3'b111) begin // csrrc / csrrci
+                case (CsrWriteImm12)
+                    12'h305: mtvec_n   &= ~{csr_write_data[31:2], 2'b00}; // 僅支援 MODE=Direct，強制對齊
+                    12'h341: mepc_n    &= ~{csr_write_data[31:1], 1'b0};  // 對齊 bit0=0
+                    12'h342: mcause_n  &= ~csr_write_data;
+                    12'h343: mtval_n   &= ~csr_write_data;
+                    12'h300: mstatus_n &= ~csr_write_data;                // 先不嚴格檢查各位元
                     default: ; // 其他 CSR 暫不處理
                 endcase
             end
@@ -525,16 +534,38 @@ module csr_control_unit(
                 CsrWrite = 1;
                 CsrWriteImm12 = id_inst[31:20];
                 csr_src_is_zimm = 0;
+            end else if (id_inst[14:12] == 3'b010) begin // csrrs
+                CsrtoReg = 1;
+                // Spec: if rs1==x0, CSRRS is read-only (no CSR write)
+                CsrWrite = (id_inst[19:15] != 5'd0);
+                CsrWriteImm12 = id_inst[31:20];
+                csr_src_is_zimm = 0;
+            end else if (id_inst[14:12] == 3'b011) begin // csrrc
+                CsrtoReg = 1;
+                // Spec: if rs1==x0, CSRRC is read-only (no CSR write)
+                CsrWrite = (id_inst[19:15] != 5'd0);
+                CsrWriteImm12 = id_inst[31:20];
+                csr_src_is_zimm = 0;
             end else if (id_inst[14:12] == 3'b101) begin // csrrwi
                 CsrtoReg = 1;
                 CsrWrite = 1;
                 CsrWriteImm12 = id_inst[31:20];
                 csr_src_is_zimm = 1;
-            end else if (id_inst[14:12] == 3'b010) begin // csrrs
+            end else if (id_inst[14:12] == 3'b110) begin // csrrsi
                 CsrtoReg = 1;
-                CsrWrite = 1;
+                // Spec: if zimm==0, CSRRSI is read-only (no CSR write)
+                CsrWrite = (id_inst[19:15] != 5'd0);
                 CsrWriteImm12 = id_inst[31:20];
-                csr_src_is_zimm = 0;
+                csr_src_is_zimm = 1;
+            end else if (id_inst[14:12] == 3'b111) begin // csrrci
+                CsrtoReg = 1;
+                // Spec: if zimm==0, CSRRCI is read-only (no CSR write)
+                CsrWrite = (id_inst[19:15] != 5'd0);
+                CsrWriteImm12 = id_inst[31:20];
+                csr_src_is_zimm = 1;
+            end else begin
+                $display("[csr_control_unit] Invalid CSR instruction");
+                $finish;
             end
         end
     end
@@ -1436,15 +1467,15 @@ module stall_unit(
                 if (ex_CsrWrite && ex_CsrWriteImm12 == id_csr_addr) begin
                     hazard_stall = 1'b1;
                     // 注意: 可能因 delta cycle 而多次觸發，但值是正確的
-                    $display("[CSR hazard @%0t] STALL! id_csr=%h conflicts with EX (ex_CsrWriteImm12=%h)", 
+                    $display("[CSR hazard @%0t] STALL! id_csr=%h conflicts with EX (ex_CsrWriteImm12=%h)",
                              $time, id_csr_addr, ex_CsrWriteImm12);
                 end else if (mem_CsrWrite && mem_CsrWriteImm12 == id_csr_addr) begin
                     hazard_stall = 1'b1;
-                    $display("[CSR hazard @%0t] STALL! id_csr=%h conflicts with MEM (mem_CsrWriteImm12=%h)", 
+                    $display("[CSR hazard @%0t] STALL! id_csr=%h conflicts with MEM (mem_CsrWriteImm12=%h)",
                              $time, id_csr_addr, mem_CsrWriteImm12);
                 end else if (wb_CsrWrite && wb_CsrWriteImm12 == id_csr_addr) begin
                     hazard_stall = 1'b1;
-                    $display("[CSR hazard @%0t] STALL! id_csr=%h conflicts with WB (wb_CsrWriteImm12=%h)", 
+                    $display("[CSR hazard @%0t] STALL! id_csr=%h conflicts with WB (wb_CsrWriteImm12=%h)",
                              $time, id_csr_addr, wb_CsrWriteImm12);
                 end
             end

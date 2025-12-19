@@ -204,7 +204,7 @@ module data_memory_multicycle(
 
     state_t state;  // 當前狀態
 
-    localparam DATA_COUNT = 1024;
+    localparam DATA_COUNT = 8192;
     logic [31:0] mem [DATA_COUNT];
 
 `ifndef IVERILOG
@@ -325,12 +325,13 @@ module address_decoder(
 );
 
     always_comb begin
-        if (address < UART_ADDR_OFFSET) begin
-            sel = SEL_RAM;
-        end else if (address < LEDS_ADDR_OFFSET) begin
+        // Default mapping: treat everything as RAM, except small MMIO windows.
+        if ((address >= UART_ADDR_OFFSET) && (address < LEDS_ADDR_OFFSET)) begin
             sel = SEL_UART;
-        end else begin
+        end else if ((address >= LEDS_ADDR_OFFSET) && (address < (LEDS_ADDR_OFFSET + 32'h10))) begin
             sel = SEL_LEDS;
+        end else begin
+            sel = SEL_RAM;
         end
     end
 

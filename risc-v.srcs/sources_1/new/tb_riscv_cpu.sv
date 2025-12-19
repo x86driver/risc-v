@@ -353,6 +353,18 @@ module tb_riscv_cpu;
         stop_early = 1'b0;
         for (cycles = 0; cycles < 20000; cycles = cycles + 1) begin
             @(negedge sys_clk_i);
+            // 抓所有 store/MMIO 寫入
+            // - RAM/UART：用 write_done 當「完成」事件，避免 multi-cycle stall 期間重複列印
+            // - LEDS：單週期裝置，直接用 MemWrite
+            if (dut.mem_data_write_done) begin
+                $display("[cycle %0d] RAM-WRITE  addr=%08h data=%08h funct3=%03b", cycles, dut.mem_alu_out, dut.mem_read_data2, dut.mem_funct3);
+            end
+            if (dut.mem_uart_write_done) begin
+                $display("[cycle %0d] UART-WRITE addr=%08h data=%08h funct3=%03b", cycles, dut.mem_alu_out, dut.mem_read_data2, dut.mem_funct3);
+            end
+            if (dut.mem_leds_MemWrite) begin
+                $display("[cycle %0d] LEDS-WRITE addr=%08h data=%08h", cycles, dut.mem_alu_out, dut.mem_read_data2);
+            end
             // 以 mem_wb_Write 與 wb_RegWrite 作為提交事件，避免同值連續寫被過濾
             commit_evt = (dut.mem_wb_Write && dut.wb_RegWrite && (dut.wb_rd != 5'd0));
             if (commit_evt) begin
@@ -408,8 +420,14 @@ module tb_riscv_cpu;
 
         if (!quiet) begin
             $display("\n--- Register Snapshot (%0s) ---", case_name);
-            $display("x1=%h x2=%h x3=%h x4=%h", dut.reg_file_0.registers[1], dut.reg_file_0.registers[2], dut.reg_file_0.registers[3], dut.reg_file_0.registers[4]);
-            $display("x5=%h x6=%h x7=%h x8=%h", dut.reg_file_0.registers[5], dut.reg_file_0.registers[6], dut.reg_file_0.registers[7], dut.reg_file_0.registers[8]);
+            $display(" x1=%h  x2=%h  x3=%h  x4=%h", dut.reg_file_0.registers[1], dut.reg_file_0.registers[2], dut.reg_file_0.registers[3], dut.reg_file_0.registers[4]);
+            $display(" x5=%h  x6=%h  x7=%h  x8=%h", dut.reg_file_0.registers[5], dut.reg_file_0.registers[6], dut.reg_file_0.registers[7], dut.reg_file_0.registers[8]);
+            $display(" x9=%h x10=%h x11=%h x12=%h", dut.reg_file_0.registers[9], dut.reg_file_0.registers[10], dut.reg_file_0.registers[11], dut.reg_file_0.registers[12]);
+            $display("x13=%h x14=%h x15=%h x16=%h", dut.reg_file_0.registers[13], dut.reg_file_0.registers[14], dut.reg_file_0.registers[15], dut.reg_file_0.registers[16]);
+            $display("x17=%h x18=%h x19=%h x20=%h", dut.reg_file_0.registers[17], dut.reg_file_0.registers[18], dut.reg_file_0.registers[19], dut.reg_file_0.registers[20]);
+            $display("x21=%h x22=%h x23=%h x24=%h", dut.reg_file_0.registers[21], dut.reg_file_0.registers[22], dut.reg_file_0.registers[23], dut.reg_file_0.registers[24]);
+            $display("x25=%h x26=%h x27=%h x28=%h", dut.reg_file_0.registers[25], dut.reg_file_0.registers[26], dut.reg_file_0.registers[27], dut.reg_file_0.registers[28]);
+            $display("x29=%h x30=%h x31=%h", dut.reg_file_0.registers[29], dut.reg_file_0.registers[30], dut.reg_file_0.registers[31]);
             $display("mtvec=%h, mepc=%h, mstatus=%h", dut.csr_file_0.mtvec, dut.csr_file_0.mepc, dut.csr_file_0.mstatus);
             $display("\n--- Memory Snapshot saved to \"memory.dump\" ---");
             memory_fd = $fopen("memory.dump", "w");

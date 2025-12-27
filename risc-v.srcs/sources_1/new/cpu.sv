@@ -146,11 +146,7 @@ module instruction_memory_multicycle(
 
                 READ_DATA: begin
 `ifdef IVERILOG
-                    if (address < 4*INST_COUNT) begin
-                        read_data <= mem[address[31:2]];
-                    end else begin
-                        read_data <= 32'h0;
-                    end
+                    read_data <= mem[address[15:2]];
 `else
                     read_data <= douta;
 `endif
@@ -247,11 +243,11 @@ module data_memory_multicycle(
                 WRITE_DATA: begin
 `ifdef IVERILOG
                     if (funct3 == 3'b000) begin // sb
-                        mem[address[31:2]][address[1:0]*8 +: 8] <= write_data[7:0];
+                        mem[address[15:2]][address[1:0]*8 +: 8] <= write_data[7:0];
                     end else if (funct3 == 3'b001) begin // sh
-                        mem[address[31:2]][address[1]*16 +: 16] <= write_data[15:0];
+                        mem[address[15:2]][address[1]*16 +: 16] <= write_data[15:0];
                     end else if (funct3 == 3'b010) begin // sw
-                        mem[address[31:2]] <= write_data;
+                        mem[address[15:2]] <= write_data;
                     end
 `endif
                     state <= WRITE_RESP;
@@ -277,7 +273,7 @@ module data_memory_multicycle(
                     logic [7:0]  byte_sel;
                     logic [15:0] half_sel;
 `ifdef IVERILOG
-                    word = mem[address[31:2]];
+                    word = mem[address[15:2]];
 `else
                     word = douta;
 `endif
@@ -402,7 +398,8 @@ module csr_file(
     input  logic [31:0] ex_trap_tval,
     input  logic        ex_trap_mret,
     output logic [31:0] csr_mtvec,
-    output logic [31:0] csr_mepc
+    output logic [31:0] csr_mepc,
+    output logic        is_illegal_csr
 );
 
     logic [31:0] mstatus = 32'h0000_0000;
@@ -410,6 +407,7 @@ module csr_file(
     logic [31:0] mepc    = 32'h1234_5678;
     logic [31:0] mcause  = 32'h0000_0000;
     logic [31:0] mtval   = 32'h0000_0000;
+    logic [31:0] mhartid = 32'h0000_0000;
 
     // next-state
     logic [31:0] mstatus_n, mtvec_n, mepc_n, mcause_n, mtval_n;
@@ -421,6 +419,7 @@ module csr_file(
     // CSR 讀取
     // ------------------------------
     always_comb begin
+        is_illegal_csr = 0;
         csr_read_data = 32'h0;
         if (id_inst[6:0] == 7'b1110011 && id_inst[14:12] != 3'b000) begin // CSR 類（排除 ECALL/MRET）
             unique case (id_inst[31:20])
@@ -429,7 +428,11 @@ module csr_file(
                 12'h342: csr_read_data = mcause;
                 12'h343: csr_read_data = mtval;
                 12'h300: csr_read_data = mstatus;
-                default: csr_read_data = 32'h0;
+                12'hf14: csr_read_data = mhartid;
+                default: begin
+                    is_illegal_csr = 1;
+                    csr_read_data = 32'h0;
+                end
             endcase
         end
     end
@@ -515,7 +518,8 @@ module csr_control_unit(
     output logic CsrWrite,
     output logic [11:0] CsrWriteImm12,
     output logic csr_src_is_zimm,
-    output logic [2:0] csr_funct3
+    output logic [2:0] csr_funct3,
+    output logic is_illegal_csr
 );
 
     always_comb begin
@@ -524,6 +528,7 @@ module csr_control_unit(
         CsrWriteImm12 = 0;
         csr_src_is_zimm = 0; // 0: select from register's content, 1: rs1 as a value
         csr_funct3 = 0;
+        is_illegal_csr = 0;
         if (id_inst[6:0] == 7'b1110011) begin // system/csr
             csr_funct3 = id_inst[14:12];
             // ECALL/MRET 是固定編碼；其餘 funct3==000 視為未支援的 SYSTEM 指令（保持預設不寫 CSR）
@@ -565,8 +570,8 @@ module csr_control_unit(
                 CsrWriteImm12 = id_inst[31:20];
                 csr_src_is_zimm = 1;
             end else begin
+                is_illegal_csr = 1;
                 $display("[csr_control_unit] Invalid CSR instruction");
-                $finish;
             end
         end
     end
@@ -795,6 +800,7 @@ module program_counter(
 
     always_ff @(posedge clk) begin
         if (!rst_n) begin
+            //TODO: pc_current <= 32'h8000_0000;
             pc_current <= 0;
         end else begin
             if (PCWrite) begin
@@ -858,19 +864,23 @@ module if_id_pipeline(
     input logic [31:0] if_pc,
     input logic [31:0] if_inst,
     output logic [31:0] id_pc,
-    output logic [31:0] id_inst
+    output logic [31:0] id_inst,
+    output logic        id_stage_valid
 );
 
     always_ff @(posedge clk) begin
         if (!rst_n) begin
             id_pc <= 32'h0;
             id_inst <= 32'h0;
+            id_stage_valid <= 1'b0;
         end else if (if_Flush) begin
             id_pc <= 32'h0;
             id_inst <= 32'h00000013; // NOP
+            id_stage_valid <= 1'b0;  // flush 插入 bubble：視為無效指令
         end else if (if_id_Write) begin
             id_pc <= if_pc;
             id_inst <= if_inst;
+            id_stage_valid <= 1'b1;  // 成功取入一條新指令（不論是否為合法 opcode）
         end
     end
 
@@ -892,6 +902,7 @@ module id_ex_pipeline(
     input logic [1:0] id_ALUOp,
     input logic id_isSub,
     input logic id_isValid,
+    input logic id_stage_valid,
 
     input logic [31:0] id_pc,
     input logic [31:0] id_inst,
@@ -911,6 +922,7 @@ module id_ex_pipeline(
     input logic [31:0] id_csr_mepc,
     input logic id_csr_src_is_zimm,
     input logic [2:0] id_csr_funct3,
+    input logic id_is_illegal_csr,
 
     output logic ex_ALUSrc,
     output logic [1:0] ex_ALUSrcA_sel,
@@ -922,6 +934,7 @@ module id_ex_pipeline(
     output logic [1:0] ex_ALUOp,
     output logic ex_isSub,
     output logic ex_isValid,
+    output logic ex_stage_valid,
 
     output logic [31:0] ex_pc,
     output logic [31:0] ex_inst,
@@ -940,7 +953,8 @@ module id_ex_pipeline(
     output logic [31:0] ex_csr_mtvec,
     output logic [31:0] ex_csr_mepc,
     output logic ex_csr_src_is_zimm,
-    output logic [2:0] ex_csr_funct3
+    output logic [2:0] ex_csr_funct3,
+    output logic ex_is_illegal_csr
 );
 
     always_ff @(posedge clk) begin
@@ -955,6 +969,7 @@ module id_ex_pipeline(
             ex_ALUOp <= 0;
             ex_isSub <= 0;
             ex_isValid <= 0;
+            ex_stage_valid <= 0;
             ex_decoded_rs1 <= 0;
             ex_decoded_rs2 <= 0;
             ex_pc <= 0;
@@ -972,6 +987,7 @@ module id_ex_pipeline(
             ex_csr_mepc <= 0;
             ex_csr_src_is_zimm <= 0;
             ex_csr_funct3 <= 0;
+            ex_is_illegal_csr <= 0;
         end else if (id_Flush) begin
             ex_ALUSrc <= 0;
             ex_ALUSrcA_sel <= 0;
@@ -983,6 +999,7 @@ module id_ex_pipeline(
             ex_ALUOp <= 0;
             ex_isSub <= 0;
             ex_isValid <= 0;
+            ex_stage_valid <= 0;
             ex_decoded_rs1 <= 0;
             ex_decoded_rs2 <= 0;
             ex_pc <= 0;
@@ -1000,6 +1017,7 @@ module id_ex_pipeline(
             ex_csr_mepc <= 0;
             ex_csr_src_is_zimm <= 0;
             ex_csr_funct3 <= 0;
+            ex_is_illegal_csr <= 0;
         end else if (id_ex_Write) begin
             ex_ALUSrc <= id_ALUSrc;
             ex_ALUSrcA_sel <= id_ALUSrcA_sel;
@@ -1011,6 +1029,7 @@ module id_ex_pipeline(
             ex_ALUOp <= id_ALUOp;
             ex_isSub <= id_isSub;
             ex_isValid <= id_isValid;
+            ex_stage_valid <= id_stage_valid;
             ex_decoded_rs1 <= id_decoded_rs1;
             ex_decoded_rs2 <= id_decoded_rs2;
             ex_pc <= id_pc;
@@ -1028,6 +1047,7 @@ module id_ex_pipeline(
             ex_csr_mepc <= id_csr_mepc;
             ex_csr_src_is_zimm <= id_csr_src_is_zimm;
             ex_csr_funct3 <= id_csr_funct3;
+            ex_is_illegal_csr <= id_is_illegal_csr;
         end
     end
 
@@ -1054,6 +1074,7 @@ module ex_mem_pipeline(
     input logic [11:0] ex_CsrWriteImm12,
     input logic [31:0] ex_csr_read_data,
     input logic [2:0] ex_csr_funct3,
+    input logic ex_stage_valid,
     output logic mem_MemtoReg,
     output logic mem_RegWrite,
     output logic mem_Branch,
@@ -1070,7 +1091,8 @@ module ex_mem_pipeline(
     output logic mem_CsrWrite,
     output logic [11:0] mem_CsrWriteImm12,
     output logic [31:0] mem_csr_read_data,
-    output logic [2:0] mem_csr_funct3
+    output logic [2:0] mem_csr_funct3,
+    output logic mem_stage_valid
 );
 
     always_ff @(posedge clk) begin
@@ -1092,6 +1114,7 @@ module ex_mem_pipeline(
             mem_CsrWriteImm12 <= 0;
             mem_csr_read_data <= 0;
             mem_csr_funct3 <= 0;
+            mem_stage_valid <= 0;
         end else if (ex_mem_Write) begin
             mem_MemtoReg <= ex_MemtoReg;
             mem_RegWrite <= ex_RegWrite;
@@ -1110,6 +1133,7 @@ module ex_mem_pipeline(
             mem_CsrWriteImm12 <= ex_CsrWriteImm12;
             mem_csr_read_data <= ex_csr_read_data;
             mem_csr_funct3 <= ex_csr_funct3;
+            mem_stage_valid <= ex_stage_valid;
         end
     end
 
@@ -1129,6 +1153,9 @@ module mem_wb_pipeline(
     input logic [11:0] mem_CsrWriteImm12,
     input logic [31:0] mem_csr_read_data,
     input logic [2:0] mem_csr_funct3,
+    input logic [31:0] mem_pc,
+    input logic [31:0] mem_inst,
+    input logic mem_stage_valid,
     output logic wb_RegWrite,
     output logic wb_MemtoReg,
     output logic [31:0] wb_memory_read_data,
@@ -1138,7 +1165,10 @@ module mem_wb_pipeline(
     output logic wb_CsrWrite,
     output logic [11:0] wb_CsrWriteImm12,
     output logic [31:0] wb_csr_read_data,
-    output logic [2:0] wb_csr_funct3
+    output logic [2:0] wb_csr_funct3,
+    output logic [31:0] wb_pc,
+    output logic [31:0] wb_inst,
+    output logic wb_stage_valid
 );
 
     always_ff @(posedge clk) begin
@@ -1153,6 +1183,9 @@ module mem_wb_pipeline(
             wb_CsrWriteImm12 <= 0;
             wb_csr_read_data <= 0;
             wb_csr_funct3 <= 0;
+            wb_pc <= 0; // TODO: 這裡應該要是 0 還是 8000_0000
+            wb_inst <= 0;
+            wb_stage_valid <= 0;
         end else if (mem_wb_Write) begin
             wb_RegWrite <= mem_RegWrite;
             wb_MemtoReg <= mem_MemtoReg;
@@ -1164,6 +1197,9 @@ module mem_wb_pipeline(
             wb_CsrWriteImm12 <= mem_CsrWriteImm12;
             wb_csr_read_data <= mem_csr_read_data;
             wb_csr_funct3 <= mem_csr_funct3;
+            wb_pc <= mem_pc;
+            wb_inst <= mem_inst;
+            wb_stage_valid <= mem_stage_valid;
         end
     end
 
@@ -1263,6 +1299,7 @@ module control_hazard_detection_unit(
     input logic [31:0] ex_mux3to1_alu_b_out,
     input logic [31:0] ex_csr_mtvec,
     input logic [31:0] ex_csr_mepc,
+    input logic  ex_is_illegal_csr,
     output logic ex_trap_take,
     output logic [31:0] ex_trap_pc,
     output logic [31:0] ex_trap_cause,
@@ -1354,6 +1391,10 @@ module control_hazard_detection_unit(
             end
         endcase
 
+        if (ex_is_illegal_csr) begin
+            branch_taken = 1;
+        end
+
         if (branch_taken) begin
             pc_branch_sel    = 1'b1;              // pc mux 選 branch
             if (is_jal) begin
@@ -1367,6 +1408,16 @@ module control_hazard_detection_unit(
                 ex_trap_tval        = 32'd0;
                 pc_branch_target    = ex_csr_mtvec;
                 $strobe("[ecall] target pc: %h, ex_inst: %h", pc_branch_target, ex_inst);
+                if (pc_branch_target == 0) begin
+                    $finish;
+                end
+            end else if (ex_is_illegal_csr) begin
+                ex_trap_take        = 1'b1;
+                ex_trap_pc          = ex_pc;
+                ex_trap_cause       = 32'd2; // Mcause code=2
+                ex_trap_tval        = 32'd0;
+                pc_branch_target    = ex_csr_mtvec;
+                $display("[illgal csr] target pc: %h, ex_inst: %h", pc_branch_target, ex_inst);
                 if (pc_branch_target == 0) begin
                     $finish;
                 end
@@ -1397,12 +1448,21 @@ module stall_unit(
 
     // CSR Hazard
     input logic  [31:0] id_inst,
+    // For system_busy (serialize all 0x73 while in flight)
+    input logic  [31:0] ex_inst,
+    input logic  [31:0] mem_inst,
+    input logic  [31:0] wb_inst,
     input logic         ex_CsrWrite,
     input logic  [11:0] ex_CsrWriteImm12,
     input logic         mem_CsrWrite,
     input logic  [11:0] mem_CsrWriteImm12,
     input logic         wb_CsrWrite,
     input logic  [11:0] wb_CsrWriteImm12,
+    input logic         ex_is_illegal_csr,
+    input logic         id_stage_valid,
+    input logic         ex_stage_valid,
+    input logic         mem_stage_valid,
+    input logic         wb_stage_valid,
 
     input  logic       if_pc_MemRead,
     input  logic       if_pc_read_data_valid,
@@ -1434,20 +1494,38 @@ module stall_unit(
     logic hazard_stall;
     logic mem_stall;
     logic if_stall;
+    logic system_inst_stall;
+    logic system_inst_running;
+    logic system_busy;
+    logic drain_done;
+    logic is_system_inst;
 
-    logic        is_system_inst;
-    logic        is_ecall_inst;
-    logic        is_mret_inst;
-    logic        is_csr_access_inst;
-    logic [11:0] id_csr_addr;
+    // 注意：stage_valid 才代表「這級真的有有效指令在飛」
+    // 0x73 序列化也必須以 stage_valid 為準，否則 bubble/NOP 可能被誤判成 system 指令而卡死。
+    assign is_system_inst = id_stage_valid && (id_inst[6:0] == 7'b1110011);
 
-    assign is_system_inst = (id_inst[6:0] == 7'b1110011);
-    // ECALL/MRET 是固定編碼，避免誤把非法/其他 SYSTEM 指令誤判
-    assign is_ecall_inst  = (id_inst == 32'h0000_0073);
-    assign is_mret_inst   = (id_inst == 32'h3020_0073);
-    assign is_csr_access_inst = is_system_inst && (id_inst[14:12] != 3'b000);
-    assign id_csr_addr    = id_inst[31:20];
+    assign drain_done     = (ex_stage_valid == 0) && (mem_stage_valid == 0) && (wb_stage_valid == 0);
+    assign system_busy    =
+        (ex_stage_valid  && (ex_inst[6:0]  == 7'b1110011)) ||
+        (mem_stage_valid && (mem_inst[6:0] == 7'b1110011)) ||
+        (wb_stage_valid  && (wb_inst[6:0]  == 7'b1110011));
 
+    always_comb begin
+        system_inst_stall = 1'b0;
+        system_inst_running = 1'b0;
+        if (is_system_inst) begin
+            if (drain_done) begin
+                system_inst_stall   = 1'b0;
+                system_inst_running = 1'b1;
+            end else begin
+                system_inst_stall   = 1'b1;
+                system_inst_running = 1'b0;
+            end
+        end else begin
+            system_inst_stall       = 1'b0;
+            system_inst_running     = 1'b0;
+        end
+    end
     //==========================================================
     // (1) load-use hazard 偵測
     //==========================================================
@@ -1456,29 +1534,6 @@ module stall_unit(
         if (ex_MemRead && (ex_rd != 0)) begin
             if ((ex_rd == id_rs1) || (ex_rd == id_rs2)) begin
                 hazard_stall = 1'b1;
-            end
-        end
-        // CSR / SYSTEM Hazard
-        if (is_system_inst) begin
-            // 對 ECALL/MRET 做「序列化」：只要前面還有任何 CSR write 未退休，就先 stall
-            if ((is_ecall_inst || is_mret_inst) && (ex_CsrWrite || mem_CsrWrite || wb_CsrWrite)) begin
-                hazard_stall = 1'b1;
-            end else if (is_csr_access_inst) begin
-                // CSR access 指令才需要做「同位址 RAW」hazard 比對
-                if (ex_CsrWrite && ex_CsrWriteImm12 == id_csr_addr) begin
-                    hazard_stall = 1'b1;
-                    // 注意: 可能因 delta cycle 而多次觸發，但值是正確的
-                    $display("[CSR hazard @%0t] STALL! id_csr=%h conflicts with EX (ex_CsrWriteImm12=%h)",
-                             $time, id_csr_addr, ex_CsrWriteImm12);
-                end else if (mem_CsrWrite && mem_CsrWriteImm12 == id_csr_addr) begin
-                    hazard_stall = 1'b1;
-                    $display("[CSR hazard @%0t] STALL! id_csr=%h conflicts with MEM (mem_CsrWriteImm12=%h)",
-                             $time, id_csr_addr, mem_CsrWriteImm12);
-                end else if (wb_CsrWrite && wb_CsrWriteImm12 == id_csr_addr) begin
-                    hazard_stall = 1'b1;
-                    $display("[CSR hazard @%0t] STALL! id_csr=%h conflicts with WB (wb_CsrWriteImm12=%h)",
-                             $time, id_csr_addr, wb_CsrWriteImm12);
-                end
             end
         end
     end
@@ -1518,6 +1573,8 @@ module stall_unit(
     // 如果不是 mem_stall，才考慮是否 hazard_stall
     //==========================================================
     always_comb begin
+        // IMPORTANT：mem_stall / if_stall 必須最高優先（blocking memory / blocking fetch）
+        // 否則序列化邏輯會讓流水線在記憶體尚未完成時「偷跑」，破壞正確性。
         if (mem_stall) begin
             // === 全部 freeze ===
             PCWrite     = 1'b0;
@@ -1538,6 +1595,35 @@ module stall_unit(
             mem_wb_Write= 1'b0;
 
             hazard_control_mux_sel = 1'b1;
+        end else if (system_busy) begin
+            // 0x73 busy：EX/MEM/WB 仍有 system 指令在飛 → 阻止年輕指令進入 EX，直到 0x73 完全退休
+            // 作法：freeze PC/IFID，並持續往 EX 注入 bubble；同時讓後段繼續前進以便把 0x73 drain 掉。
+            PCWrite     = 1'b0;   // freeze PC（但 trap/branch 仍可用 PCWrite_final override）
+            if_id_Write = 1'b0;   // freeze IF/ID（保留下一條年輕指令在 ID，不讓它進 EX）
+            id_ex_Write = 1'b1;   // allow backend advance
+            ex_mem_Write= 1'b1;
+            mem_wb_Write= 1'b1;
+
+            hazard_control_mux_sel = 1'b0; // 插入 bubble（讓 EX 成為 NOP）
+        end else if (system_inst_stall) begin
+            // 0x73 序列化：等待後段清空（drain），同時持續往 EX 注入 bubble 讓後段繼續跑
+            PCWrite     = 1'b0;   // freeze PC
+            if_id_Write = 1'b0;   // freeze IF/ID（ID 保持這條 0x73）
+            id_ex_Write = 1'b1;   // allow backend advance
+            ex_mem_Write= 1'b1;
+            mem_wb_Write= 1'b1;
+
+            hazard_control_mux_sel = 1'b0; // 插入 bubble（讓 EX 成為 NOP）
+        end else if (system_inst_running) begin
+            // 0x73 issue 1-cycle：讓 0x73 從 ID 進 EX，同時讓 IF/ID 抓下一條指令
+            // PCWrite 必須為 1，維持「PC 領先 ID 一拍」的 pipeline 節奏，否則下一條 0x73 會被重複 issue。
+            PCWrite     = 1'b1;
+            if_id_Write = 1'b1;
+            id_ex_Write = 1'b1;
+            ex_mem_Write= 1'b1;
+            mem_wb_Write= 1'b1;
+
+            hazard_control_mux_sel = 1'b1; // 不插 bubble，正常送入 EX
         end else if (hazard_stall) begin
             // === load-use / CSR hazard → freeze 前半段(PC/IF_ID)，插入 bubble ===
             PCWrite     = 1'b0;   // freeze PC
@@ -1770,6 +1856,7 @@ module riscv_cpu(
     wire [1:0] id_ALUOp;
     wire id_isSub;
     wire id_isValid;
+    wire id_stage_valid;
 
     wire id_CsrtoReg;
     wire id_CsrWrite;
@@ -1779,6 +1866,8 @@ module riscv_cpu(
     wire [31:0] id_csr_mepc;
     wire id_csr_src_is_zimm;
     wire [2:0] id_csr_funct3;
+    wire id_is_illegal_csr;
+    wire id_is_illegal_csr_encoding;
 
     wire mux_id_MemWrite;
     wire mux_id_RegWrite;
@@ -1797,6 +1886,7 @@ module riscv_cpu(
     wire [1:0] ex_ALUOp;
     wire ex_isSub;
     wire ex_isValid;
+    wire ex_stage_valid;
 
     wire [2:0] ex_funct3;
     wire [4:0] ex_rd;
@@ -1816,6 +1906,7 @@ module riscv_cpu(
     wire ex_trap_mret;
     wire ex_csr_src_is_zimm;
     wire [2:0] ex_csr_funct3;
+    wire ex_is_illegal_csr;
 
     wire [1:0] ForwardA;
     wire [1:0] ForwardB;
@@ -1836,6 +1927,7 @@ module riscv_cpu(
     wire [31:0] mem_read_data2;
     wire [4:0] mem_rd;
     wire [2:0] mem_funct3;
+    wire mem_stage_valid;
 
     wire mem_CsrtoReg;
     wire mem_CsrWrite;
@@ -1871,6 +1963,9 @@ module riscv_cpu(
     wire [11:0] wb_CsrWriteImm12;
     wire [31:0] wb_csr_read_data;
     wire [2:0] wb_csr_funct3;
+    wire [31:0] wb_pc;
+    wire [31:0] wb_inst;
+    wire wb_stage_valid;
 
     wire [1:0] address_sel;
     wire memRead_en;
@@ -1912,6 +2007,32 @@ module riscv_cpu(
     // 導致「PC 已跳轉但 link 寫回消失」這類錯誤。
     assign id_Flush_final = (id_Flush && id_ex_Write) || id_ex_bubble; // control flush + data-hazard bubble
 
+    // ------------------------------------------------------------
+    // Debug: stage_valid/inst trace (for verifying pipeline occupancy)
+    // - 用 $strobe 觀察 posedge 後的狀態（NBA 更新後）
+    // - 預設只印前 120 cycles，避免 log 爆量
+    // ------------------------------------------------------------
+    int dbg_cycle = 0;
+    always_ff @(posedge clk) begin
+        if (!rst_n) begin
+            dbg_cycle <= 0;
+        end else begin
+            dbg_cycle <= dbg_cycle + 1;
+            if (dbg_cycle < 120) begin
+                $strobe("[DBG %0d] PC=%08h | ID(V=%0b pc=%08h inst=%08h) EX(V=%0b pc=%08h inst=%08h) MEM(V=%0b pc=%08h inst=%08h) WB(V=%0b pc=%08h inst=%08h) | WE: ifid=%0b idex=%0b exmem=%0b memwb=%0b | FL: if=%0b idex=%0b | pc_br=%0b",
+                        dbg_cycle,
+                        pc_current,
+                        id_stage_valid, id_pc, id_inst,
+                        ex_stage_valid, ex_pc, ex_inst,
+                        mem_stage_valid, mem_pc, mem_inst,
+                        wb_stage_valid, wb_pc, wb_inst,
+                        if_id_Write, id_ex_Write, ex_mem_Write, mem_wb_Write,
+                        if_Flush, id_Flush_final,
+                        pc_branch_sel);
+            end
+        end
+    end
+
     program_counter pc_module(
         .clk(clk),
         .rst_n(rst_n),
@@ -1928,6 +2049,7 @@ module riscv_cpu(
         .ex_mux3to1_alu_b_out(mux3to1_alu_b_out),
         .ex_csr_mtvec(ex_csr_mtvec),
         .ex_csr_mepc(ex_csr_mepc),
+        .ex_is_illegal_csr(ex_is_illegal_csr),
         .ex_trap_take(ex_trap_take),
         .ex_trap_pc(ex_trap_pc),
         .ex_trap_cause(ex_trap_cause),
@@ -1970,6 +2092,9 @@ module riscv_cpu(
         .id_rs1(id_decoded_rs1),
         .id_rs2(id_decoded_rs2),
         .id_inst(id_inst),
+        .ex_inst(ex_inst),
+        .mem_inst(mem_inst),
+        .wb_inst(wb_inst),
         .ex_CsrWrite(ex_CsrWrite),
         .ex_CsrWriteImm12(ex_CsrWriteImm12),
         .mem_CsrWrite(mem_CsrWrite),
@@ -1978,6 +2103,11 @@ module riscv_cpu(
         .wb_CsrWriteImm12(wb_CsrWriteImm12),
         .if_pc_MemRead(if_pc_MemRead),
         .if_pc_read_data_valid(if_pc_read_data_valid),
+        .ex_is_illegal_csr(ex_is_illegal_csr),
+        .id_stage_valid(id_stage_valid),
+        .ex_stage_valid(ex_stage_valid),
+        .mem_stage_valid(mem_stage_valid),
+        .wb_stage_valid(wb_stage_valid),
         .mem_data_MemRead(mem_data_MemRead),
         .mem_data_MemWrite(mem_data_MemWrite),
         .mem_data_read_data_valid(mem_data_read_data_valid),
@@ -2018,7 +2148,8 @@ module riscv_cpu(
         .if_pc(pc_current),
         .if_inst(if_inst),
         .id_pc(id_pc),
-        .id_inst(id_inst)
+        .id_inst(id_inst),
+        .id_stage_valid(id_stage_valid)
     );
 
     id_ex_pipeline id_ex_pipeline_0(
@@ -2037,6 +2168,7 @@ module riscv_cpu(
         .id_ALUOp(id_ALUOp),
         .id_isSub(id_isSub),
         .id_isValid(id_isValid),
+        .id_stage_valid(id_stage_valid),
 
         .id_pc(id_pc),
         .id_inst(id_inst),
@@ -2056,6 +2188,7 @@ module riscv_cpu(
         .id_csr_mepc(id_csr_mepc),
         .id_csr_src_is_zimm(id_csr_src_is_zimm),
         .id_csr_funct3(id_csr_funct3),
+        .id_is_illegal_csr(id_is_illegal_csr || id_is_illegal_csr_encoding),
 
         .ex_ALUSrc(ex_ALUSrc),
         .ex_ALUSrcA_sel(ex_ALUSrcA_sel),
@@ -2067,6 +2200,7 @@ module riscv_cpu(
         .ex_ALUOp(ex_ALUOp),
         .ex_isSub(ex_isSub),
         .ex_isValid(ex_isValid),
+        .ex_stage_valid(ex_stage_valid),
 
         .ex_pc(ex_pc),
         .ex_inst(ex_inst),
@@ -2085,30 +2219,45 @@ module riscv_cpu(
         .ex_csr_mtvec(ex_csr_mtvec),
         .ex_csr_mepc(ex_csr_mepc),
         .ex_csr_src_is_zimm(ex_csr_src_is_zimm),
-        .ex_csr_funct3(ex_csr_funct3)
+        .ex_csr_funct3(ex_csr_funct3),
+        .ex_is_illegal_csr(ex_is_illegal_csr)
     );
+
+    // ------------------------------------------------------------
+    // Precise exception requirement:
+    // - 當 EX 判定要陷入（ex_trap_take=1）時，該 faulting 指令不得對 GPR/CSR/memory 產生任何寫入副作用。
+    // - 這裡用 gating 把該指令的 write-enable 全部清 0（但仍允許它在 pipeline 中 drain）。
+    // ------------------------------------------------------------
+    wire ex_kill_on_trap = ex_trap_take;
+    wire ex_RegWrite_eff = ex_RegWrite && !ex_kill_on_trap;
+    wire ex_CsrWrite_eff = ex_CsrWrite && !ex_kill_on_trap;
+    wire ex_CsrtoReg_eff = ex_CsrtoReg && !ex_kill_on_trap;
+    wire ex_MemWrite_eff = ex_MemWrite && !ex_kill_on_trap;
+    wire ex_MemRead_eff  = ex_MemRead  && !ex_kill_on_trap;
+    wire ex_MemtoReg_eff = ex_MemtoReg && !ex_kill_on_trap;
 
     ex_mem_pipeline ex_mem_pipeline0(
         .clk(clk),
         .rst_n(rst_n),
         .ex_mem_Write(ex_mem_Write),
-        .ex_MemtoReg(ex_MemtoReg),
-        .ex_RegWrite(ex_RegWrite),
+        .ex_MemtoReg(ex_MemtoReg_eff),
+        .ex_RegWrite(ex_RegWrite_eff),
         .ex_Branch(ex_Branch),
-        .ex_MemRead(ex_MemRead),
-        .ex_MemWrite(ex_MemWrite),
-        .ex_pc(ex_pc + ex_imm32),
+        .ex_MemRead(ex_MemRead_eff),
+        .ex_MemWrite(ex_MemWrite_eff),
+        .ex_pc(ex_pc),
         .ex_inst(ex_inst),
         .ex_Zero(ex_Zero),
         .ex_alu_out(ex_alu_out),
         .ex_read_data2(mux3to1_alu_b_out),
         .ex_rd(ex_rd),
         .ex_funct3(ex_funct3),
-        .ex_CsrtoReg(ex_CsrtoReg),
-        .ex_CsrWrite(ex_CsrWrite),
+        .ex_CsrtoReg(ex_CsrtoReg_eff),
+        .ex_CsrWrite(ex_CsrWrite_eff),
         .ex_CsrWriteImm12(ex_CsrWriteImm12),
         .ex_csr_read_data(ex_csr_read_data),
         .ex_csr_funct3(ex_csr_funct3),
+        .ex_stage_valid(ex_stage_valid),
         .mem_MemtoReg(mem_MemtoReg),
         .mem_RegWrite(mem_RegWrite),
         .mem_Branch(mem_Branch),
@@ -2125,7 +2274,8 @@ module riscv_cpu(
         .mem_CsrWrite(mem_CsrWrite),
         .mem_CsrWriteImm12(mem_CsrWriteImm12),
         .mem_csr_read_data(mem_csr_read_data),
-        .mem_csr_funct3(mem_csr_funct3)
+        .mem_csr_funct3(mem_csr_funct3),
+        .mem_stage_valid(mem_stage_valid)
     );
 
     mem_wb_pipeline mem_wb_pipeline_0(
@@ -2142,6 +2292,9 @@ module riscv_cpu(
         .mem_CsrWriteImm12(mem_CsrWriteImm12),
         .mem_csr_read_data(mem_csr_read_data),
         .mem_csr_funct3(mem_csr_funct3),
+        .mem_pc(mem_pc),
+        .mem_inst(mem_inst),
+        .mem_stage_valid(mem_stage_valid),
         .wb_RegWrite(wb_RegWrite),
         .wb_MemtoReg(wb_MemtoReg),
         .wb_memory_read_data(wb_memory_read_data),
@@ -2151,7 +2304,10 @@ module riscv_cpu(
         .wb_CsrWrite(wb_CsrWrite),
         .wb_CsrWriteImm12(wb_CsrWriteImm12),
         .wb_csr_read_data(wb_csr_read_data),
-        .wb_csr_funct3(wb_csr_funct3)
+        .wb_csr_funct3(wb_csr_funct3),
+        .wb_pc(wb_pc),
+        .wb_inst(wb_inst),
+        .wb_stage_valid(wb_stage_valid)
     );
 
     imm32_gen imm32_gen_0(
@@ -2181,7 +2337,8 @@ module riscv_cpu(
         .CsrWrite(id_CsrWrite),
         .CsrWriteImm12(id_CsrWriteImm12),
         .csr_src_is_zimm(id_csr_src_is_zimm),
-        .csr_funct3(id_csr_funct3)
+        .csr_funct3(id_csr_funct3),
+        .is_illegal_csr(id_is_illegal_csr_encoding)
     );
 
     forwarding_unit forwarding_unit_0(
@@ -2287,7 +2444,8 @@ module riscv_cpu(
         .ex_trap_tval(ex_trap_tval),
         .ex_trap_mret(ex_trap_mret),
         .csr_mtvec(id_csr_mtvec),
-        .csr_mepc(id_csr_mepc)
+        .csr_mepc(id_csr_mepc),
+        .is_illegal_csr(id_is_illegal_csr)
     );
 
     mux2to1 mux2to1_memory(

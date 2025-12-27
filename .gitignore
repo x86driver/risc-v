@@ -39,3 +39,6 @@ xsim.ini.bak
 *.prm
 
 *.xsa
+
+.cursor
+.vscode

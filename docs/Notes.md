@@ -419,3 +419,22 @@ csrr x4, mepc 這一行執行是正確
 mret 有問題 (請看除錯全流程)
 
 - [x] 把 csr forwarding 移除
+
+12/19
+==============
+
+- [ ] 再挑幾個 riscv-tests 來跑, 用 Makefile 自動轉檔
+- [ ] 和 spike 做比較
+- [ ] 把 +DUMP_EXP 加上 pc, csr, branch
+
+12/21
+==============
+
+1. 看起來是 stall 的問題 因為加上兩個 nop 就好了
+2. 改成只要有人在寫 CsrWrite 就 stall, 看起來是可以解決
+
+
+12/24
+==============
+
+1. 要實做 precise exception

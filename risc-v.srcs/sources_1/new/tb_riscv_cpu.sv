@@ -365,6 +365,22 @@ module tb_riscv_cpu;
             if (dut.mem_leds_MemWrite) begin
                 $display("[cycle %0d] LEDS-WRITE addr=%08h data=%08h", cycles, dut.mem_alu_out, dut.mem_read_data2);
             end
+
+            if (dut.mem_wb_Write && dump_fd != 0) begin
+                if (dut.wb_MemtoReg && (^dut.wb_memory_read_data === 1'bx)) begin
+                end else begin
+                    if (dut.wb_RegWrite && (dut.wb_rd != 5'd0)) begin
+                        $fwrite(dump_fd, "0x%08x (0x%08x) x%0d 0x%08x\n", dut.wb_pc, dut.wb_inst, dut.wb_rd, dut.wb_mux_write_data);
+                    end else if (dut.wb_pc != 0) begin
+                        if (dut.wb_CsrWrite && dut.wb_CsrWriteImm12 != 0) begin
+                            $fwrite(dump_fd, "0x%08x (0x%08x) c%0d_xxx 0x%08x\n", dut.wb_pc, dut.wb_inst, dut.wb_CsrWriteImm12, dut.wb_reg_write_data);
+                        end else begin
+                            $fwrite(dump_fd, "0x%08x (0x%08x)\n", dut.wb_pc, dut.wb_inst);
+                        end
+                    end
+                end
+            end
+
             // 以 mem_wb_Write 與 wb_RegWrite 作為提交事件，避免同值連續寫被過濾
             commit_evt = (dut.mem_wb_Write && dut.wb_RegWrite && (dut.wb_rd != 5'd0));
             if (commit_evt) begin
@@ -378,9 +394,6 @@ module tb_riscv_cpu;
                     last_commit_val  <= dut.wb_mux_write_data;
 
                     if (!quiet || verbose) $display("COMMIT[%0d]: rd=%0d val=%08x mem=%0d mem_valid=%0d", seen, dut.wb_rd, dut.wb_mux_write_data, dut.wb_MemtoReg, (^dut.wb_memory_read_data === 1'bx) ? 0 : 1);
-                    if (dump_fd != 0) begin
-                        $fwrite(dump_fd, "%0d %08x\n", dut.wb_rd, dut.wb_mux_write_data);
-                    end
                     if (dut.wb_rd === 5'd3) x3_seen = 1'b1;
                     if (forbid_rd_mask[dut.wb_rd]) begin
                         if (!quiet) $display("ERROR: forbidden rd write: rd=%0d val=%08x", dut.wb_rd, dut.wb_mux_write_data);
@@ -429,6 +442,7 @@ module tb_riscv_cpu;
             $display("x25=%h x26=%h x27=%h x28=%h", dut.reg_file_0.registers[25], dut.reg_file_0.registers[26], dut.reg_file_0.registers[27], dut.reg_file_0.registers[28]);
             $display("x29=%h x30=%h x31=%h", dut.reg_file_0.registers[29], dut.reg_file_0.registers[30], dut.reg_file_0.registers[31]);
             $display("mtvec=%h, mepc=%h, mstatus=%h", dut.csr_file_0.mtvec, dut.csr_file_0.mepc, dut.csr_file_0.mstatus);
+            $display("LED=%h", dut.leds_ctrl_0.leds);
             $display("\n--- Memory Snapshot saved to \"memory.dump\" ---");
             memory_fd = $fopen("memory.dump", "w");
             memory_addr = 0;

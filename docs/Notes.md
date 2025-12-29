@@ -438,3 +438,23 @@ mret 有問題 (請看除錯全流程)
 ==============
 
 1. 要實做 precise exception
+
+
+12/28
+==============
+
+1. design_1.bd 可以 add module 了
+2. 模擬時, pc 會前進, 之後就卡在 0x28 sw x4, 4(x1)
+3. 改成寫一個 testbench, 現在問題可能是 reset 的極性要確定 (應該是對的 只是要等一下才會出來)
+4. 一樣是卡在 0x28
+5. 0x40600000 64K (原本設定)
+6. 把 address map 改了, 但似乎訊號沒有送出去
+7. 可以抓 axi_uartlite_ctrl 訊號看看
+
+
+12/29
+==============
+
+1. AXI 接線錯誤 改好後模擬可以過
+2. 燒到 FPGA 沒任何東西
+3. 結果是 uart.sv m_axi_awaddr 寬度寫錯, 而且 cpu.sv write_data 接錯線

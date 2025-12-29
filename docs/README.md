@@ -1,15 +1,22 @@
 ## Development Environment Setup
 
-This project uses Git to track sources but ignores Vivado generated IP artifacts.
-**After cloning this repository on a new machine, you MUST run the setup script.**
+After modifying the Block Design in GUI:
+1. Save BD (Ctrl+S)
+2. Regenerate and re-import wrapper:
+   - In Vivado Tcl Console:
+     ```tcl
+     cd [get_property DIRECTORY [current_project]]
+     source scripts/update_wrapper.tcl
+     update_bd_wrapper
+     ```
+   - Or in terminal:
+     ```bash
+     vivado -mode batch -source scripts/update_wrapper.tcl -tclargs kcu105.xpr
+     ```
+3. Commit the updated wrapper file:
+   - `risc-v.srcs/sources_1/imports/hdl/*_wrapper.v`
+   - and BD `.bd` if it changed
 
-### Steps to Initialize:
-1. Open `risc-v.xpr` in Vivado.
-2. In the **Tcl Console** (bottom of the window), run:
-   ```tcl
-   cd [get_property DIRECTORY [current_project]]
-   source scripts/setup_ips.tcl
-   ```
 
 # 測試方式：
 

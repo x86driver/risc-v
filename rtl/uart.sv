@@ -11,7 +11,7 @@ module axi_uartlite_ctrl(
 
     // AXI4-Lite Master Interface
     // --- Address Write ---
-    output logic [3:0]   m_axi_awaddr,
+    output logic [31:0]  m_axi_awaddr,
     output logic [2:0]   m_axi_awprot,
     output logic         m_axi_awvalid,
     input  logic         m_axi_awready,
@@ -28,7 +28,7 @@ module axi_uartlite_ctrl(
     output logic         m_axi_bready,
 
     // --- Read Data ---
-    output logic [3:0]   m_axi_araddr,
+    output logic [31:0]  m_axi_araddr,
     output logic         m_axi_arvalid,
     input  logic         m_axi_arready,
     input  logic [31:0]  m_axi_rdata,
@@ -66,7 +66,7 @@ module axi_uartlite_ctrl(
     // =========================================================================
     // 內部暫存器
     // =========================================================================
-    logic [3:0]  addr_reg;       // 暫存地址
+    logic [31:0] addr_reg;       // 暫存地址 (byte address)
     logic [31:0] wdata_reg;      // 暫存寫入數據
     logic [31:0] rdata_reg;      // 暫存讀取數據
     logic        aw_done;        // 寫地址已被接受
@@ -96,13 +96,13 @@ module axi_uartlite_ctrl(
                     w_done  <= 1'b0;
                     if (write_enable) begin
                         // 鎖存寫入地址和數據，然後開始傳輸
-                        addr_reg  <= write_address[3:0];
+                        addr_reg  <= write_address;
                         wdata_reg <= write_data;
                         state     <= WRITE_ADDR;
                         //$display("[UART %0t] IDLE->WRITE_ADDR: addr=%h data=%h", $time, write_address[3:0], write_data);
                     end else if (read_enable) begin
                         // 鎖存讀取地址，然後開始傳輸
-                        addr_reg <= read_address[3:0];
+                        addr_reg <= read_address;
                         state    <= READ_ADDR;
                         //$display("[UART %0t] IDLE->READ_ADDR: addr=%h", $time, read_address[3:0]);
                     end
@@ -232,7 +232,7 @@ module uart(
     input logic rx
 );
 
-    wire [3:0]   axi_awaddr;
+    wire [31:0]  axi_awaddr;
     wire         axi_awvalid;
     wire         axi_awready;
 
@@ -248,7 +248,7 @@ module uart(
     wire         axi_bready;
 
     // --- Read ---
-    wire [3:0]   axi_araddr;
+    wire [31:0]  axi_araddr;
     wire         axi_arvalid;
     wire         axi_arready;
     wire [31:0]  axi_rdata;
@@ -258,6 +258,7 @@ module uart(
 
     wire uart_interrupt;
 
+/*
 `ifdef IVERILOG
     `define UART_MODULE_TYPE axi_uartlite_simple
 `else
@@ -288,6 +289,7 @@ module uart(
         .rx(rx),
         .interrupt(uart_interrupt)
     );
+*/
 
     axi_uartlite_ctrl uartlite_ctrl_0(
         .clk(clk),

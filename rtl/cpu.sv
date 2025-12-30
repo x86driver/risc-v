@@ -2,10 +2,10 @@
 // Create Date: 01/20/2025 01:31:56 PM
 
 `include "uart.sv"
-`ifdef XILINX_SIMULATOR
-`include "wiredly.v"
-`include "ddr3_model.sv"
-`endif
+// `ifdef XILINX_SIMULATOR
+// `include "wiredly.v"
+// `include "ddr3_model.sv"
+// `endif
 
 parameter UART_ADDR_OFFSET = 32'h0000_0700;
 parameter LEDS_ADDR_OFFSET = 32'h0000_0710;
@@ -1754,52 +1754,67 @@ module lsu(
 endmodule
 
 module riscv_cpu(
-`ifndef XILINX_SIMULATOR
-    input sys_clk_i,
-`endif
-    input logic btn_reset_n,
-`ifndef XILINX_SIMULATOR
-    inout [15:0]    ddr3_dq,
-    inout [1:0]     ddr3_dqs_n,
-    inout [1:0]     ddr3_dqs_p,
-    output [13:0]   ddr3_addr,
-    output [2:0]    ddr3_ba,
-    output          ddr3_ras_n,
-    output          ddr3_cas_n,
-    output          ddr3_we_n,
-    output          ddr3_reset_n,
-    output [0:0]    ddr3_ck_p,
-    output [0:0]    ddr3_ck_n,
-    output [0:0]    ddr3_cke,
-    output [0:0]    ddr3_cs_n,
-    output [1:0]    ddr3_dm,
-    output [0:0]    ddr3_odt,
-`endif
-//    input logic uart_rx,
-    output wire uart_tx,
+    input  logic clk,
+    input  logic btn_reset_n,
+
+    // AXI4-Lite Master Interface
+    // --- Address Write ---
+    output logic [31:0]  m_axi_awaddr,
+    output logic [2:0]   m_axi_awprot,
+    output logic         m_axi_awvalid,
+    input  logic         m_axi_awready,
+
+    // --- Write Data ---
+    output logic [31:0]  m_axi_wdata,
+    output logic [3:0]   m_axi_wstrb,
+    output logic         m_axi_wvalid,
+    input  logic         m_axi_wready,
+
+    // --- Write Response ---
+    input  logic [1:0]   m_axi_bresp,
+    input  logic         m_axi_bvalid,
+    output logic         m_axi_bready,
+
+    // --- Read Address Channel ---
+    output logic [31:0]  m_axi_araddr,
+    output logic         m_axi_arvalid,
+    input  logic         m_axi_arready,
+
+    // --- Read Data ---
+    input  logic [31:0]  m_axi_rdata,
+    input  logic [1:0]   m_axi_rresp,
+    input  logic         m_axi_rvalid,
+    output logic         m_axi_rready,
+
     output logic [7:0] leds
 );
 
     logic uart_rx = 1;
     localparam integer BIT_PERIOD = 104160 * 1000;
 
-`ifdef XILINX_SIMULATOR
-    logic sys_clk_i = 0;
-    always #10000 sys_clk_i = ~sys_clk_i;
-    //always #10 clk = ~clk;
-`endif
+// `ifdef XILINX_SIMULATOR
+//     logic sys_clk_i = 0;
+//     always #10000 sys_clk_i = ~sys_clk_i;
+//     //always #10 clk = ~clk;
+// `endif
 
-    wire rst_n = pll_locked;
-    wire clk;
-    wire clk_200;
-    wire pll_locked;
-    clk_wiz_0 u_clk_wiz_0 (
-        .clk_out1(clk_200),
-        .clk_out2(clk),
-        .resetn(btn_reset_n),
-        .locked(pll_locked),
-        .clk_in1(sys_clk_i)
+    wire rst_n;
+    power_on_reset power_on_reset_0(
+        .clk(clk),
+        .btn_reset_n(btn_reset_n),
+        .rst_n(rst_n)
     );
+    // wire rst_n = pll_locked;
+    // wire clk;
+    // wire clk_200;
+    // wire pll_locked;
+    // clk_wiz_0 u_clk_wiz_0 (
+    //     .clk_out1(clk_200),
+    //     .clk_out2(clk),
+    //     .resetn(btn_reset_n),
+    //     .locked(pll_locked),
+    //     .clk_in1(sys_clk_i)
+    // );
 
     initial begin
         @(posedge rst_n);
@@ -1824,6 +1839,7 @@ module riscv_cpu(
             #(BIT_PERIOD);
         end
     endtask
+
 
     wire [31:0] pc_current;
     wire [31:0] pc_next;
@@ -2498,19 +2514,51 @@ module riscv_cpu(
     assign mem_uart_MemRead = memRead_en && address_sel == SEL_UART;
     assign mem_uart_MemWrite = memWrite_en && address_sel == SEL_UART;
 
-    uart uart_0(
+    // 換成 axi_uartlite_ctrl 不用減掉 UART_ADDR_OFFSET
+    axi_uartlite_ctrl uartlite_ctrl_0(
         .clk(clk),
         .rst_n(rst_n),
-        .MemRead(mem_uart_MemRead),
-        .MemWrite(mem_uart_MemWrite),
-        .address(mem_alu_out - UART_ADDR_OFFSET),
-        .write_data(mem_read_data2),
+        .m_axi_awaddr(m_axi_awaddr),
+        .m_axi_awprot(m_axi_awprot),
+        .m_axi_awvalid(m_axi_awvalid),
+        .m_axi_awready(m_axi_awready),
+        .m_axi_wdata(m_axi_wdata),
+        .m_axi_wstrb(m_axi_wstrb),
+        .m_axi_wvalid(m_axi_wvalid),
+        .m_axi_wready(m_axi_wready),
+        .m_axi_bresp(m_axi_bresp),
+        .m_axi_bvalid(m_axi_bvalid),
+        .m_axi_bready(m_axi_bready),
+        .m_axi_araddr(m_axi_araddr),
+        .m_axi_arvalid(m_axi_arvalid),
+        .m_axi_arready(m_axi_arready),
+        .m_axi_rdata(m_axi_rdata),
+        .m_axi_rresp(m_axi_rresp),
+        .m_axi_rvalid(m_axi_rvalid),
+        .m_axi_rready(m_axi_rready),
+        .read_enable(mem_uart_MemRead),
+        .read_address(mem_alu_out),
         .read_data_valid(mem_uart_read_data_valid),
-        .read_data(mem_uart_read_data),
-        .write_done(mem_uart_write_done),
-        .tx(uart_tx),
-        .rx(uart_rx)
+        .read_data_out(mem_uart_read_data),
+        .write_enable(mem_uart_MemWrite),
+        .write_address(mem_alu_out),
+        .write_data(mem_read_data2),
+        .write_done(mem_uart_write_done)
     );
+
+    // uart uart_0(
+    //     .clk(clk),
+    //     .rst_n(rst_n),
+    //     .MemRead(mem_uart_MemRead),
+    //     .MemWrite(mem_uart_MemWrite),
+    //     .address(mem_alu_out - UART_ADDR_OFFSET),
+    //     .write_data(mem_read_data2),
+    //     .read_data_valid(mem_uart_read_data_valid),
+    //     .read_data(mem_uart_read_data),
+    //     .write_done(mem_uart_write_done),
+    //     .tx(uart_tx),
+    //     .rx(uart_rx)
+    // );
 
     assign mem_leds_MemRead = memRead_en && address_sel == SEL_LEDS;
     assign mem_leds_MemWrite = memWrite_en && address_sel == SEL_LEDS;
@@ -2641,6 +2689,7 @@ module riscv_cpu(
     );
 */
 
+/*
 `ifdef XILINX_SIMULATOR
     always @( * ) begin
         ddr3_ck_p_sdram      <=  ddr3_ck_p_fpga;
@@ -2765,5 +2814,6 @@ module riscv_cpu(
         end
     endgenerate
 `endif
+*/
 
 endmodule

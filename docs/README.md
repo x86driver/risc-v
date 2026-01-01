@@ -20,6 +20,15 @@ After modifying the Block Design in GUI:
 
 # 測試方式：
 
+本專案目前提供兩種測試流程：
+
+1. **Icarus Verilog（iverilog）+ `.exp` 提交序列比對**：用於你自己寫的 `program/source/*.S` 單元測試
+2. **Verilator + Spike 對照（log + signature）**：用於跑 `riscv-tests`（ELF）並確保結果與 Spike 一模一樣
+
+---
+
+## 1) iverilog：跑自製 `.S` + `.exp`（提交序列 Expectation）
+
 ```bash
 make run TEST=test-name
 ```
@@ -27,6 +36,11 @@ make run TEST=test-name
 其中 test-name 代表應該存在這兩個檔案：
 program/source/test-name.S
 program/exp/test-name.exp
+
+常用目標：
+- `make test-summary`：跑 `program/hex/*_prog.hex` 所有測試，輸出每個測試 PASS/FAIL 與總結
+- `make test-all`：跑全部測試（輸出較多）
+- `make run-quiet TEST=<name>`：只輸出一行結果（方便寫腳本/CI）
 
 # exp 檔案的寫法（提交序列 Expectation）：
 
@@ -180,3 +194,50 @@ vvp ./simv +HEX=... +CASE=... +EXP=... +EXPECT_REG=1:0x1,2:0x2,3:0x3
   - 應寫成：`xori x1, x2, -1366`（-1366 的 12-bit 表示就是 0xAAA）
 - addi、xori、ori、andi 等 I-type 指令都會對 12-bit 立即數進行符號擴展到 32-bit
 - lui 指令使用 20-bit 立即數，載入到高 20 位
+
+---
+
+## 2) Verilator + Spike：跑 riscv-tests（ELF）並逐字比對 log + signature
+
+前置需求：
+- `spike`：`/opt/riscv/bin/spike`
+- `riscv64-unknown-elf-objcopy`：`/opt/riscv/bin/riscv64-unknown-elf-objcopy`
+
+### 跑單一 ELF（並與 Spike 逐字比對）
+
+（ELF 可以是 repo 內的檔案，也可以是絕對路徑，例如 riscv-tests 目錄下的 ELF）
+
+```bash
+make riscv-test ELF=rv32ui-p-add
+# 或
+make riscv-test ELF=/opt/riscv/target/share/riscv-tests/isa/rv32ui-p-add
+```
+
+輸出檔會在 `build/riscv-tests/`：
+- `<name>.spike.log` / `<name>.dut.log`：Spike vs DUT 的 commit log（**逐字比對**）
+- `<name>.spike.sig` / `<name>.dut.sig`：signature dump（若該測試 signature 區間為空，sig 會是空檔）
+- `<name>.runner.txt`：完整比對過程（FAIL 時優先看這個）
+
+### 跑一整套（預設跑 rv32ui-p-*）
+
+```bash
+make riscv-tests
+```
+
+可用參數（環境變數）：
+- `PATTERN`：要跑的檔名 glob（預設 `rv32ui-p-*`）
+- `DIR`：ELF 目錄（預設 `/opt/riscv/target/share/riscv-tests/isa`）
+- `LIMIT`：只跑前 N 個（smoke 用）
+- `FAIL_FAST=1`：遇到第一個 FAIL 就停止
+- `ISA`：Spike ISA 字串（預設 `rv32i`）
+- `SPIKE_MAX_INSN`：Spike 最多跑多少指令（預設 `200000`）
+- `MAX_CYCLES`：DUT 最多跑多少 cycle（預設 `200000`）
+
+範例：
+```bash
+make riscv-tests LIMIT=10 FAIL_FAST=1
+make riscv-tests PATTERN='rv32ui-p-*'
+make riscv-tests DIR=/opt/riscv/target/share/riscv-tests/isa PATTERN='rv32ui-p-*'
+```
+
+執行完會在 `build/riscv-tests/summary.txt` 產生 PASS/FAIL 總表。

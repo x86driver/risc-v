@@ -94,7 +94,12 @@ module instruction_memory_multicycle(
     logic [31:0] last_address;  // 記錄上次讀取的地址
     logic read_data_valid_reg;  // 寄存器版本
 
-    localparam INST_COUNT = 1024;
+    // NOTE (simulation robustness):
+    // - We index instruction memory with address[15:2] (word index up to 16K entries).
+    // - Keep the backing array large enough so $readmemh() doesn't overflow and
+    //   so typical RV32 test images placed at 0x8000_0000.. can execute without
+    //   out-of-bounds array accesses in Verilator/Icarus.
+    localparam INST_COUNT = 16384;
 
     logic [31:0] mem [INST_COUNT];
 
@@ -200,7 +205,11 @@ module data_memory_multicycle(
 
     state_t state;  // 當前狀態
 
-    localparam DATA_COUNT = 8192;
+    // NOTE (simulation robustness):
+    // - We index data memory with address[15:2] (word index up to 16K entries).
+    // - Make the backing array cover the full address[15:2] range to avoid
+    //   out-of-bounds accesses during simulation.
+    localparam DATA_COUNT = 16384;
     logic [31:0] mem [DATA_COUNT];
 
 `ifndef IVERILOG
@@ -399,21 +408,40 @@ module csr_file(
     input  logic        ex_trap_mret,
     output logic [31:0] csr_mtvec,
     output logic [31:0] csr_mepc,
+    output logic [1:0]  csr_priv_mode,
     output logic        is_illegal_csr
 );
 
-    logic [31:0] mstatus = 32'h0000_0000;
-    logic [31:0] mtvec   = 32'hDEAD_BEEF;
-    logic [31:0] mepc    = 32'h1234_5678;
-    logic [31:0] mcause  = 32'h0000_0000;
-    logic [31:0] mtval   = 32'h0000_0000;
-    logic [31:0] mhartid = 32'h0000_0000;
+    // Minimal CSR set required by riscv-tests/spike boot flow.
+    // NOTE: For now these are simple 32-bit regs (no WARL enforcement yet).
+    logic [31:0] mstatus  = 32'h0000_0000;
+    logic [31:0] mstatush = 32'h0000_0000;
+    logic [31:0] mtvec    = 32'h0000_0000;
+    logic [31:0] mepc     = 32'h0000_0000;
+    logic [31:0] mcause   = 32'h0000_0000;
+    logic [31:0] mtval    = 32'h0000_0000;
+    logic [31:0] mhartid  = 32'h0000_0000;
+    logic [31:0] medeleg  = 32'h0000_0000;
+    logic [31:0] mideleg  = 32'h0000_0000;
+    logic [31:0] mie      = 32'h0000_0000;
+    logic [31:0] satp     = 32'h0000_0000;
+    logic [31:0] stvec    = 32'h0000_0000;
+    logic [31:0] pmpcfg0  = 32'h0000_0000;
+    logic [31:0] pmpaddr0 = 32'h0000_0000;
+    // mnstatus (0x744) is optional (Smrnmi); Spike may treat it as illegal on rv32i.
+    // Keep unimplemented for now to match Spike's illegal-instruction behavior.
 
     // next-state
-    logic [31:0] mstatus_n, mtvec_n, mepc_n, mcause_n, mtval_n;
+    logic [31:0] mstatus_n, mstatush_n;
+    logic [31:0] mtvec_n, mepc_n, mcause_n, mtval_n;
+    logic [31:0] medeleg_n, mideleg_n, mie_n, satp_n, stvec_n;
+    logic [31:0] pmpcfg0_n, pmpaddr0_n;
+    logic [1:0]  priv_mode = 2'b11;   // current privilege (M=3, S=1, U=0)
+    logic [1:0]  priv_mode_n;
 
     assign csr_mtvec = mtvec;
     assign csr_mepc  = mepc;
+    assign csr_priv_mode = priv_mode;
 
     // ------------------------------
     // CSR 讀取
@@ -428,7 +456,15 @@ module csr_file(
                 12'h342: csr_read_data = mcause;
                 12'h343: csr_read_data = mtval;
                 12'h300: csr_read_data = mstatus;
+                12'h310: csr_read_data = mstatush;
                 12'hf14: csr_read_data = mhartid;
+                12'h302: csr_read_data = medeleg;
+                12'h303: csr_read_data = mideleg;
+                12'h304: csr_read_data = mie;
+                12'h180: csr_read_data = satp;
+                12'h105: csr_read_data = stvec;
+                12'h3a0: csr_read_data = pmpcfg0;
+                12'h3b0: csr_read_data = pmpaddr0;
                 default: begin
                     is_illegal_csr = 1;
                     csr_read_data = 32'h0;
@@ -444,10 +480,19 @@ module csr_file(
     // ------------------------------
     always_comb begin
         mstatus_n = mstatus;
+        mstatush_n= mstatush;
         mtvec_n   = mtvec;
         mepc_n    = mepc;
         mcause_n  = mcause;
         mtval_n   = mtval;
+        medeleg_n = medeleg;
+        mideleg_n = mideleg;
+        mie_n     = mie;
+        satp_n    = satp;
+        stvec_n   = stvec;
+        pmpcfg0_n = pmpcfg0;
+        pmpaddr0_n= pmpaddr0;
+        priv_mode_n = priv_mode;
 
         // (1) CSR 寫入（CSRRW/CSRRS 等），先更新 *_n
         if (CsrWrite) begin
@@ -458,6 +503,14 @@ module csr_file(
                     12'h342: mcause_n  = csr_write_data;
                     12'h343: mtval_n   = csr_write_data;
                     12'h300: mstatus_n = csr_write_data;                // 先不嚴格檢查各位元
+                    12'h310: mstatush_n= csr_write_data;
+                    12'h302: medeleg_n = csr_write_data;
+                    12'h303: mideleg_n = csr_write_data;
+                    12'h304: mie_n     = csr_write_data;
+                    12'h180: satp_n    = csr_write_data;
+                    12'h105: stvec_n   = {csr_write_data[31:2], 2'b00}; // direct, aligned
+                    12'h3a0: pmpcfg0_n = csr_write_data;
+                    12'h3b0: pmpaddr0_n= csr_write_data;
                     default: ; // 其他 CSR 暫不處理
                 endcase
             end else if (csr_funct3 == 3'b010 || csr_funct3 == 3'b110) begin // csrrs / csrrsi
@@ -467,6 +520,14 @@ module csr_file(
                     12'h342: mcause_n  |= csr_write_data;
                     12'h343: mtval_n   |= csr_write_data;
                     12'h300: mstatus_n |= csr_write_data;                // 先不嚴格檢查各位元
+                    12'h310: mstatush_n|= csr_write_data;
+                    12'h302: medeleg_n |= csr_write_data;
+                    12'h303: mideleg_n |= csr_write_data;
+                    12'h304: mie_n     |= csr_write_data;
+                    12'h180: satp_n    |= csr_write_data;
+                    12'h105: stvec_n   |= {csr_write_data[31:2], 2'b00};
+                    12'h3a0: pmpcfg0_n |= csr_write_data;
+                    12'h3b0: pmpaddr0_n|= csr_write_data;
                     default: ; // 其他 CSR 暫不處理
                 endcase
             end else if (csr_funct3 == 3'b011 || csr_funct3 == 3'b111) begin // csrrc / csrrci
@@ -476,6 +537,14 @@ module csr_file(
                     12'h342: mcause_n  &= ~csr_write_data;
                     12'h343: mtval_n   &= ~csr_write_data;
                     12'h300: mstatus_n &= ~csr_write_data;                // 先不嚴格檢查各位元
+                    12'h310: mstatush_n&= ~csr_write_data;
+                    12'h302: medeleg_n &= ~csr_write_data;
+                    12'h303: mideleg_n &= ~csr_write_data;
+                    12'h304: mie_n     &= ~csr_write_data;
+                    12'h180: satp_n    &= ~csr_write_data;
+                    12'h105: stvec_n   &= ~{csr_write_data[31:2], 2'b00};
+                    12'h3a0: pmpcfg0_n &= ~csr_write_data;
+                    12'h3b0: pmpaddr0_n&= ~csr_write_data;
                     default: ; // 其他 CSR 暫不處理
                 endcase
             end
@@ -491,12 +560,17 @@ module csr_file(
             // 注意：這裡用的是 mstatus_n（已反映同拍 CSR 寫入後的值）
             mstatus_n[7]     = mstatus_n[3];  // MPIE <- MIE
             mstatus_n[3]     = 1'b0;          // MIE  <- 0
-            mstatus_n[12:11] = 2'b11;         // PPP  <- M
+            mstatus_n[12:11] = priv_mode;     // MPP  <- previous priv
+            priv_mode_n      = 2'b11;         // enter M-mode
+        end else if (ex_trap_mret) begin
+            // mret:
+            // - return to MPP
+            // - MIE <- MPIE; MPIE <- 1; MPP <- U(0)
+            priv_mode_n      = mstatus_n[12:11];
+            mstatus_n[3]     = mstatus_n[7];  // MIE  <- MPIE
+            mstatus_n[7]     = 1'b1;          // MPIE <- 1
+            mstatus_n[12:11] = 2'b00;         // MPP  <- U
         end
-
-        //TODO: if (ex_trap_mret) begin
-        //    $display("[csr file] ex_trap_mret: mepc_n: %h", mepc_n);
-        //end
     end
 
     // ------------------------------
@@ -504,10 +578,19 @@ module csr_file(
     // ------------------------------
     always_ff @(posedge clk) begin
         mstatus <= mstatus_n;
+        mstatush<= mstatush_n;
         mtvec   <= mtvec_n;
         mepc    <= mepc_n;
         mcause  <= mcause_n;
         mtval   <= mtval_n;
+        medeleg <= medeleg_n;
+        mideleg <= mideleg_n;
+        mie     <= mie_n;
+        satp    <= satp_n;
+        stvec   <= stvec_n;
+        pmpcfg0 <= pmpcfg0_n;
+        pmpaddr0<= pmpaddr0_n;
+        priv_mode <= priv_mode_n;
     end
 
 endmodule
@@ -571,7 +654,11 @@ module csr_control_unit(
                 csr_src_is_zimm = 1;
             end else begin
                 is_illegal_csr = 1;
-                $display("[csr_control_unit] Invalid CSR instruction");
+`ifdef IVERILOG
+                if ($test$plusargs("CSRDBG")) begin
+                    $display("[csr_control_unit] Invalid CSR instruction");
+                end
+`endif
             end
         end
     end
@@ -790,7 +877,12 @@ module imm32_gen(
 
 endmodule
 
-module program_counter(
+module program_counter #(
+    // Simulation/SoC integration:
+    // - default 0 keeps existing in-repo tests (linked at 0) working
+    // - riscv-tests + spike default boot flow starts at 0x0000_1000
+    parameter logic [31:0] RESET_PC = 32'h0000_0000
+)(
     input logic clk,
     input logic rst_n,
     input logic PCWrite,
@@ -800,8 +892,7 @@ module program_counter(
 
     always_ff @(posedge clk) begin
         if (!rst_n) begin
-            //TODO: pc_current <= 32'h8000_0000;
-            pc_current <= 0;
+            pc_current <= RESET_PC;
         end else begin
             if (PCWrite) begin
                 pc_current <= {pc_next[31:2], 2'b00};
@@ -1147,6 +1238,9 @@ module mem_wb_pipeline(
     input logic mem_MemtoReg,
     input logic [31:0] mem_memory_read_data,
     input logic [31:0] mem_alu_out,
+    // Carry store data to WB so we can produce Spike-like logs (mem addr + data)
+    // and build signature from retired stores without peeking into RAM arrays.
+    input logic [31:0] mem_store_data,
     input logic [4:0] mem_rd,
     input logic mem_CsrtoReg,
     input logic mem_CsrWrite,
@@ -1160,6 +1254,7 @@ module mem_wb_pipeline(
     output logic wb_MemtoReg,
     output logic [31:0] wb_memory_read_data,
     output logic [31:0] wb_alu_out,
+    output logic [31:0] wb_store_data,
     output logic [4:0] wb_rd,
     output logic wb_CsrtoReg,
     output logic wb_CsrWrite,
@@ -1177,6 +1272,7 @@ module mem_wb_pipeline(
             wb_MemtoReg <= 0;
             wb_memory_read_data <= 0;
             wb_alu_out <= 0;
+            wb_store_data <= 0;
             wb_rd <= 0;
             wb_CsrtoReg <= 0;
             wb_CsrWrite <= 0;
@@ -1191,6 +1287,7 @@ module mem_wb_pipeline(
             wb_MemtoReg <= mem_MemtoReg;
             wb_memory_read_data <= mem_memory_read_data;
             wb_alu_out <= mem_alu_out;
+            wb_store_data <= mem_store_data;
             wb_rd <= mem_rd;
             wb_CsrtoReg <= mem_CsrtoReg;
             wb_CsrWrite <= mem_CsrWrite;
@@ -1249,8 +1346,13 @@ module forwarding_unit(
             ForwardB = 2'b00;
         end
 
-        if (ForwardA != 0) $display("[fw unit] ForwardA: %h", ForwardA);
-        if (ForwardB != 0) $display("[fw unit] ForwardB: %h", ForwardB);
+`ifdef IVERILOG
+        // Debug print is extremely verbose; enable only when explicitly requested.
+        if ($test$plusargs("FWDBG")) begin
+            if (ForwardA != 0) $display("[fw unit] ForwardA: %h", ForwardA);
+            if (ForwardB != 0) $display("[fw unit] ForwardB: %h", ForwardB);
+        end
+`endif
     end
 
 endmodule
@@ -1300,6 +1402,7 @@ module control_hazard_detection_unit(
     input logic [31:0] ex_csr_mtvec,
     input logic [31:0] ex_csr_mepc,
     input logic  ex_is_illegal_csr,
+    input logic [1:0] ex_priv_mode,
     output logic ex_trap_take,
     output logic [31:0] ex_trap_pc,
     output logic [31:0] ex_trap_cause,
@@ -1404,10 +1507,19 @@ module control_hazard_detection_unit(
             end else if (is_ecall) begin
                 ex_trap_take        = 1'b1;
                 ex_trap_pc          = ex_pc;
-                ex_trap_cause       = 32'd11; // Mcause code=11
+                // ecall cause depends on current privilege mode
+                unique case (ex_priv_mode)
+                    2'b00: ex_trap_cause = 32'd8;   // ECALL from U-mode
+                    2'b01: ex_trap_cause = 32'd9;   // ECALL from S-mode
+                    default: ex_trap_cause = 32'd11; // ECALL from M-mode
+                endcase
                 ex_trap_tval        = 32'd0;
                 pc_branch_target    = ex_csr_mtvec;
-                $strobe("[ecall] target pc: %h, ex_inst: %h", pc_branch_target, ex_inst);
+`ifdef IVERILOG
+                if ($test$plusargs("TRAPDBG")) begin
+                    $strobe("[ecall] target pc: %h, ex_inst: %h", pc_branch_target, ex_inst);
+                end
+`endif
                 if (pc_branch_target == 0) begin
                     $finish;
                 end
@@ -1417,13 +1529,22 @@ module control_hazard_detection_unit(
                 ex_trap_cause       = 32'd2; // Mcause code=2
                 ex_trap_tval        = 32'd0;
                 pc_branch_target    = ex_csr_mtvec;
-                $display("[illgal csr] target pc: %h, ex_inst: %h", pc_branch_target, ex_inst);
+`ifdef IVERILOG
+                if ($test$plusargs("TRAPDBG")) begin
+                    $display("[illgal csr] target pc: %h, ex_inst: %h", pc_branch_target, ex_inst);
+                end
+`endif
                 if (pc_branch_target == 0) begin
                     $finish;
                 end
             end else if (is_mret) begin
+                ex_trap_mret        = 1'b1;
                 pc_branch_target    = ex_csr_mepc;
-                $display("[mret] target pc: %h, ex_csr_mepc: %h", pc_branch_target, ex_csr_mepc);
+`ifdef IVERILOG
+                if ($test$plusargs("TRAPDBG")) begin
+                    $display("[mret] target pc: %h, ex_csr_mepc: %h", pc_branch_target, ex_csr_mepc);
+                end
+`endif
                 if (pc_branch_target == 0) begin
                     $finish;
                 end
@@ -1753,7 +1874,11 @@ module lsu(
 
 endmodule
 
-module riscv_cpu(
+module riscv_cpu #(
+    // Default keeps existing internal tests (linked at 0) working.
+    // For Spike-compatible riscv-tests flow, set to 0x0000_1000 in TB.
+    parameter logic [31:0] RESET_PC = 32'h0000_0000
+)(
     input  logic clk,
     input  logic btn_reset_n,
 
@@ -1884,6 +2009,7 @@ module riscv_cpu(
     wire [2:0] id_csr_funct3;
     wire id_is_illegal_csr;
     wire id_is_illegal_csr_encoding;
+    wire [1:0] id_csr_priv_mode;
 
     wire mux_id_MemWrite;
     wire mux_id_RegWrite;
@@ -1920,6 +2046,9 @@ module riscv_cpu(
     wire [31:0] ex_trap_cause;
     wire [31:0] ex_trap_tval;
     wire ex_trap_mret;
+    // Pulse trap/mret effects only when EX->MEM is advancing (avoid repeating side-effects on stalls)
+    wire ex_trap_take_fire;
+    wire ex_trap_mret_fire;
     wire ex_csr_src_is_zimm;
     wire [2:0] ex_csr_funct3;
     wire ex_is_illegal_csr;
@@ -2009,6 +2138,7 @@ module riscv_cpu(
 
     wire [31:0] wb_reg_write_data;
     wire [31:0] wb_mux_write_data;
+    wire [31:0] wb_store_data;
 
     wire hazard_control_mux_sel;
     wire PCWrite_final;
@@ -2023,10 +2153,11 @@ module riscv_cpu(
     // 導致「PC 已跳轉但 link 寫回消失」這類錯誤。
     assign id_Flush_final = (id_Flush && id_ex_Write) || id_ex_bubble; // control flush + data-hazard bubble
 
+`ifdef IVERILOG
     // ------------------------------------------------------------
     // Debug: stage_valid/inst trace (for verifying pipeline occupancy)
-    // - 用 $strobe 觀察 posedge 後的狀態（NBA 更新後）
-    // - 預設只印前 120 cycles，避免 log 爆量
+    // - enable with +DBG
+    // - only prints first 120 cycles
     // ------------------------------------------------------------
     int dbg_cycle = 0;
     always_ff @(posedge clk) begin
@@ -2034,7 +2165,7 @@ module riscv_cpu(
             dbg_cycle <= 0;
         end else begin
             dbg_cycle <= dbg_cycle + 1;
-            if (dbg_cycle < 120) begin
+            if ($test$plusargs("DBG") && (dbg_cycle < 120)) begin
                 $strobe("[DBG %0d] PC=%08h | ID(V=%0b pc=%08h inst=%08h) EX(V=%0b pc=%08h inst=%08h) MEM(V=%0b pc=%08h inst=%08h) WB(V=%0b pc=%08h inst=%08h) | WE: ifid=%0b idex=%0b exmem=%0b memwb=%0b | FL: if=%0b idex=%0b | pc_br=%0b",
                         dbg_cycle,
                         pc_current,
@@ -2048,8 +2179,9 @@ module riscv_cpu(
             end
         end
     end
+`endif
 
-    program_counter pc_module(
+    program_counter #(.RESET_PC(RESET_PC)) pc_module(
         .clk(clk),
         .rst_n(rst_n),
         .PCWrite(PCWrite_final),
@@ -2066,6 +2198,7 @@ module riscv_cpu(
         .ex_csr_mtvec(ex_csr_mtvec),
         .ex_csr_mepc(ex_csr_mepc),
         .ex_is_illegal_csr(ex_is_illegal_csr),
+        .ex_priv_mode(id_csr_priv_mode),
         .ex_trap_take(ex_trap_take),
         .ex_trap_pc(ex_trap_pc),
         .ex_trap_cause(ex_trap_cause),
@@ -2077,6 +2210,9 @@ module riscv_cpu(
         .pc_branch_sel(pc_branch_sel),
         .pc_branch_target(pc_branch_target)
     );
+
+    assign ex_trap_take_fire = ex_trap_take && ex_mem_Write;
+    assign ex_trap_mret_fire = ex_trap_mret && ex_mem_Write;
 
     mux2to1 mux2to1_pc(
         .sel(pc_branch_sel),
@@ -2241,8 +2377,11 @@ module riscv_cpu(
 
     // ------------------------------------------------------------
     // Precise exception requirement:
-    // - 當 EX 判定要陷入（ex_trap_take=1）時，該 faulting 指令不得對 GPR/CSR/memory 產生任何寫入副作用。
-    // - 這裡用 gating 把該指令的 write-enable 全部清 0（但仍允許它在 pipeline 中 drain）。
+    // - 當 EX 判定要陷入（ex_trap_take=1）時，該 faulting 指令不得「退休(retire)」
+    //   且不得對 GPR/CSR/memory 產生任何寫入副作用。
+    // - 這裡做兩件事：
+    //   1) gating：把該指令的 write-enable 全部清 0
+    //   2) kill stage_valid：確保 WB 不會把它當成退休指令（也方便做 spike-like log）
     // ------------------------------------------------------------
     wire ex_kill_on_trap = ex_trap_take;
     wire ex_RegWrite_eff = ex_RegWrite && !ex_kill_on_trap;
@@ -2251,6 +2390,7 @@ module riscv_cpu(
     wire ex_MemWrite_eff = ex_MemWrite && !ex_kill_on_trap;
     wire ex_MemRead_eff  = ex_MemRead  && !ex_kill_on_trap;
     wire ex_MemtoReg_eff = ex_MemtoReg && !ex_kill_on_trap;
+    wire ex_stage_valid_eff = ex_stage_valid && !ex_kill_on_trap;
 
     ex_mem_pipeline ex_mem_pipeline0(
         .clk(clk),
@@ -2273,7 +2413,7 @@ module riscv_cpu(
         .ex_CsrWriteImm12(ex_CsrWriteImm12),
         .ex_csr_read_data(ex_csr_read_data),
         .ex_csr_funct3(ex_csr_funct3),
-        .ex_stage_valid(ex_stage_valid),
+        .ex_stage_valid(ex_stage_valid_eff),
         .mem_MemtoReg(mem_MemtoReg),
         .mem_RegWrite(mem_RegWrite),
         .mem_Branch(mem_Branch),
@@ -2302,6 +2442,7 @@ module riscv_cpu(
         .mem_MemtoReg(mem_MemtoReg),
         .mem_memory_read_data(mem_final_read_data),
         .mem_alu_out(mem_alu_out),
+        .mem_store_data(mem_read_data2),
         .mem_rd(mem_rd),
         .mem_CsrtoReg(mem_CsrtoReg),
         .mem_CsrWrite(mem_CsrWrite),
@@ -2315,6 +2456,7 @@ module riscv_cpu(
         .wb_MemtoReg(wb_MemtoReg),
         .wb_memory_read_data(wb_memory_read_data),
         .wb_alu_out(wb_alu_out),
+        .wb_store_data(wb_store_data),
         .wb_rd(wb_rd),
         .wb_CsrtoReg(wb_CsrtoReg),
         .wb_CsrWrite(wb_CsrWrite),
@@ -2454,13 +2596,14 @@ module riscv_cpu(
         .csr_write_data(wb_reg_write_data),
         .csr_funct3(wb_csr_funct3),
         .csr_read_data(id_csr_read_data),
-        .ex_trap_take(ex_trap_take),
+        .ex_trap_take(ex_trap_take_fire),
         .ex_trap_pc(ex_trap_pc),
         .ex_trap_cause(ex_trap_cause),
         .ex_trap_tval(ex_trap_tval),
-        .ex_trap_mret(ex_trap_mret),
+        .ex_trap_mret(ex_trap_mret_fire),
         .csr_mtvec(id_csr_mtvec),
         .csr_mepc(id_csr_mepc),
+        .csr_priv_mode(id_csr_priv_mode),
         .is_illegal_csr(id_is_illegal_csr)
     );
 

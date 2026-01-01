@@ -42,3 +42,5 @@ xsim.ini.bak
 
 .cursor
 .vscode
+build/
+obj_dir/

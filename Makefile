@@ -35,6 +35,38 @@ clean:
 	rm -f program/hex/*_prog.hex
 	rm -f risc-v.srcs/sources_1/ip/blk_mem_gen_0/uart-hello_prog.coe
 
+# -------------------------------------------------------------------
+# Verilator (Spike-compare) flow for riscv-tests-style ELFs
+# -------------------------------------------------------------------
+.PHONY: verilator
+verilator:
+	verilator --binary --timing -Wall -Wno-fatal -DIVERILOG -I$(PWD)/rtl \
+	  --top-module tb_verilator $(PWD)/rtl/cpu.sv $(PWD)/sim/tb_verilator.sv -o simv_verilator
+
+.PHONY: riscv-test
+# Usage:
+#   make riscv-test ELF=rv32ui-p-add
+riscv-test: verilator
+	@test -n "$(ELF)" || (echo "Usage: make riscv-test ELF=<path-to-elf>"; exit 2)
+	@elf_path="$(ELF)"; case "$$elf_path" in /*) ;; *) elf_path="$(PWD)/$$elf_path";; esac; \
+	  python3 scripts/run_riscv_test_compare_spike.py --elf "$$elf_path" --outdir "$(PWD)/build/riscv-tests"
+
+.PHONY: riscv-tests
+# Usage:
+#   make riscv-tests
+#   make riscv-tests PATTERN=rv32ui-p-* DIR=/opt/riscv/target/share/riscv-tests/isa
+#   make riscv-tests LIMIT=10 FAIL_FAST=1
+riscv-tests: verilator
+	python3 scripts/run_riscv_tests_suite.py \
+	  --dir "$${DIR:-/opt/riscv/target/share/riscv-tests/isa}" \
+	  --pattern "$${PATTERN:-rv32ui-p-*}" \
+	  --outdir "$(PWD)/build/riscv-tests" \
+	  --isa "$${ISA:-rv32i}" \
+	  --spike-max-instructions "$${SPIKE_MAX_INSN:-200000}" \
+	  --max-cycles "$${MAX_CYCLES:-200000}" \
+	  $$( [ "$${FAIL_FAST:-0}" = "1" ] && echo --fail-fast ) \
+	  $$( [ -n "$${LIMIT:-}" ] && echo --limit "$${LIMIT}" )
+
 # Parametric single test run: make run TEST=<name>
 # expects program/<name>_prog.hex and optional program/<name>.exp
 # will build the program if it doesn't exist

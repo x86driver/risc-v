@@ -347,7 +347,10 @@ MacOS 步驟:
 ```bash
 git clone https://github.com/riscv-software-src/riscv-isa-sim
 cd riscv-isa-sim
-./configure
+mkdir build
+cd build
+export RISCV=/opt/riscv
+./configure --prefix=$RISCV
 make -j$(sysctl -n hw.ncpu)
 ```
 

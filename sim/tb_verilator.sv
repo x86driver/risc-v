@@ -316,8 +316,17 @@ module tb_verilator;
                 $fwrite(log_fd, "c768_mstatus 0x%08x c784_mstatush\n", dut.csr_file_0.mstatus);
                 printed = 1'b1;
             end else if (opcode == 7'b0100011) begin
-                // Store: "mem <addr> <data>" (no trailing space in log-spike.txt)
-                $fwrite(log_fd, "mem 0x%08x 0x%08x\n", dut.wb_alu_out, dut.wb_store_data);
+                // Store: "mem <addr> <data>"
+                // Spike prints store data width based on size:
+                // - sb: 0x0 .. 0xff   (no zero-padding)
+                // - sh: 0x0 .. 0xffff (no zero-padding)
+                // - sw: 0x00000000 .. 0xffffffff (8-hex-digit zero-padded)
+                unique case (dut.wb_inst[14:12])
+                    // IMPORTANT: pass an 8/16-bit value so %x prints the same width as Spike
+                    3'b000: $fwrite(log_fd, "mem 0x%08x 0x%x\n", dut.wb_alu_out, dut.wb_store_data[7:0]);   // sb
+                    3'b001: $fwrite(log_fd, "mem 0x%08x 0x%x\n", dut.wb_alu_out, dut.wb_store_data[15:0]);  // sh
+                    default: $fwrite(log_fd, "mem 0x%08x 0x%08x\n", dut.wb_alu_out, dut.wb_store_data);      // sw
+                endcase
                 printed = 1'b1;
 
                 // Stop condition: first non-zero write to tohost[0] means PASS/FAIL.
@@ -344,6 +353,14 @@ module tb_verilator;
                         printed = 1'b1;
                         need_trailing_space = 1'b1;
                     end
+                end
+
+                // Spike 會在 load retire 時記錄記憶體存取，即使 rd=x0（無寫回）也會印 "mem".
+                // （python 端會把 load 的 address trim 掉，最後只留下 "mem"）
+                if (!printed && (opcode == 7'b0000011)) begin
+                    $fwrite(log_fd, "mem");
+                    printed = 1'b1;
+                    need_trailing_space = 1'b0;
                 end
 
                 // CSR write side-effect: "c<dec>_<name> <val>" (with trailing space)

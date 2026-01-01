@@ -18,6 +18,43 @@ mainhex: program/main_prog.hex
 program/hex/%_prog.hex: program/source/%.S scripts/asm_to_hex.py
 	python3 scripts/asm_to_hex.py --input $< --output $@
 
+# -------------------------------------------------------------------
+# Build simple "tohost" ELFs from program/source/*_elf.S for Spike-compare flow
+# -------------------------------------------------------------------
+build/asm-elf/%.elf: program/source/%_elf.S
+	@mkdir -p build/asm-elf
+	/opt/riscv/bin/riscv64-unknown-elf-gcc \
+	  -march=rv32i_zicsr_zifencei -mabi=ilp32 \
+	  -nostdlib -nostartfiles \
+	  -Wl,--no-relax -Wl,-e,_start -Wl,-Tprogram/riscv_test.ld \
+	  -o $@ $<
+
+build/asm-elf/%.dump: build/asm-elf/%.elf
+	/opt/riscv/bin/riscv64-unknown-elf-objdump -d -M numeric $< > $@
+
+# Generic rules for self-tests (matches hazard-elf, load-elf, etc.)
+%-elf: build/asm-elf/%.elf build/asm-elf/%.dump
+	@:
+
+%-spike: %-elf
+	$(MAKE) riscv-test ELF=build/asm-elf/$*.elf
+
+# Auto-discover all *_elf.S tests
+SPIKE_SELFTESTS_SRCS := $(wildcard program/source/*_elf.S)
+SPIKE_SELFTESTS := $(patsubst program/source/%_elf.S, %-elf, $(SPIKE_SELFTESTS_SRCS))
+
+.PHONY: spike-selftests
+spike-selftests: verilator $(SPIKE_SELFTESTS)
+	python3 scripts/run_riscv_tests_suite.py \
+	  --dir "$(PWD)/build/asm-elf" \
+	  --pattern "*.elf" \
+	  --outdir "$(PWD)/build/spike-selftests" \
+	  --isa "rv32i" \
+	  --spike-max-instructions "$${SPIKE_MAX_INSN:-200000}" \
+	  --max-cycles "$${MAX_CYCLES:-200000}" \
+	  $$( [ "$${FAIL_FAST:-0}" = "1" ] && echo --fail-fast ) \
+	  $$( [ -n "$${LIMIT:-}" ] && echo --limit "$${LIMIT}" )
+
 test: all
 	make build-hex-all
 	make test-all
@@ -34,6 +71,8 @@ clean:
 	rm -f simv
 	rm -f program/hex/*_prog.hex
 	rm -f risc-v.srcs/sources_1/ip/blk_mem_gen_0/uart-hello_prog.coe
+	rm -rf build
+	rm -rf obj_dir
 
 # -------------------------------------------------------------------
 # Verilator (Spike-compare) flow for riscv-tests-style ELFs

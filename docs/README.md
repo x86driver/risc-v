@@ -20,10 +20,11 @@ After modifying the Block Design in GUI:
 
 # 測試方式：
 
-本專案目前提供兩種測試流程：
+本專案目前提供三種測試流程：
 
 1. **Icarus Verilog（iverilog）+ `.exp` 提交序列比對**：用於你自己寫的 `program/source/*.S` 單元測試
 2. **Verilator + Spike 對照（log + signature）**：用於跑 `riscv-tests`（ELF）並確保結果與 Spike 一模一樣
+3. **Verilator** + 自己寫的單元測試 + Spike
 
 ---
 
@@ -241,3 +242,9 @@ make riscv-tests DIR=/opt/riscv/target/share/riscv-tests/isa PATTERN='rv32ui-p-*
 ```
 
 執行完會在 `build/riscv-tests/summary.txt` 產生 PASS/FAIL 總表。
+
+## 3) Verilator + 自己寫的單元測試 + Spike
+
+```bash
+make spike-selftests
+```

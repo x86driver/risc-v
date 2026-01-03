@@ -37,6 +37,7 @@ class ElfInfo:
     tohost: int
     begin_sig: int
     end_sig: int
+    load_addr: int  # First LOAD segment virtual address (usually 0x80000000 for riscv-tests)
 
 
 def run_checked(cmd: List[str], *, cwd: Optional[Path] = None) -> subprocess.CompletedProcess:
@@ -75,30 +76,49 @@ def parse_readelf_symbols(readelf_s: str) -> Dict[str, int]:
     return out
 
 
+def parse_readelf_load_addr(readelf_l: str) -> int:
+    """Parse the first LOAD segment's virtual address from `readelf -l` output."""
+    # Example line:
+    #   LOAD           0x000000 0x80000000 0x80000000 0x02010 0x02010 RWE 0x1000
+    for line in readelf_l.splitlines():
+        parts = line.split()
+        if len(parts) >= 3 and parts[0] == "LOAD":
+            try:
+                return int(parts[2], 16)
+            except ValueError:
+                continue
+    # Default for riscv-tests
+    return 0x80000000
+
+
 def elf_info(elf: Path) -> ElfInfo:
     h = run_checked(["readelf", "-h", str(elf)]).stdout
     s = run_checked(["readelf", "-s", str(elf)]).stdout
+    l = run_checked(["readelf", "-l", str(elf)]).stdout
     entry = parse_readelf_entry(h)
     syms = parse_readelf_symbols(s)
+    load_addr = parse_readelf_load_addr(l)
     if "tohost" not in syms:
         raise RuntimeError("ELF missing `tohost` symbol (required for riscv-tests)")
     begin_sig = syms.get("begin_signature", 0)
     end_sig = syms.get("end_signature", 0)
-    return ElfInfo(entry=entry, tohost=syms["tohost"], begin_sig=begin_sig, end_sig=end_sig)
+    return ElfInfo(entry=entry, tohost=syms["tohost"], begin_sig=begin_sig, end_sig=end_sig, load_addr=load_addr)
 
 
-def objcopy_to_hex(elf: Path, out_hex: Path) -> None:
+def objcopy_to_hex(elf: Path, out_hex: Path) -> Path:
+    """Convert ELF to hex format for Verilog $readmemh. Returns path to the binary file."""
     out_hex.parent.mkdir(parents=True, exist_ok=True)
-    tmp_bin = out_hex.with_suffix(".bin")
-    run_checked([str(OBJCOPY), "-O", "binary", str(elf), str(tmp_bin)])
-    data = tmp_bin.read_bytes()
+    out_bin = out_hex.with_suffix(".bin")
+    run_checked([str(OBJCOPY), "-O", "binary", str(elf), str(out_bin)])
+    data = out_bin.read_bytes()
     if len(data) % 4:
         data += b"\x00" * (4 - (len(data) % 4))
     with out_hex.open("w", encoding="utf-8") as f:
         for i in range(0, len(data), 4):
             w = struct.unpack_from("<I", data, i)[0]
             f.write(f"{w:08x}\n")
-    tmp_bin.unlink(missing_ok=True)
+    # Keep the binary file for signature reconstruction
+    return out_bin
 
 
 def objdump_to_dump(elf: Path, out_dump: Path) -> None:
@@ -106,7 +126,9 @@ def objdump_to_dump(elf: Path, out_dump: Path) -> None:
     Produce a disassembly dump for debugging (always deterministic for a given ELF).
     """
     out_dump.parent.mkdir(parents=True, exist_ok=True)
-    dump_txt = run_checked([str(OBJDUMP), "-d", "-M", "numeric", str(elf)]).stdout
+    dump_txt = run_checked(
+        [str(OBJDUMP), "-d", "-j", ".text.init", "-j", ".data", "-M", "numeric", str(elf)]
+    ).stdout
     out_dump.write_text(dump_txt, encoding="utf-8", errors="replace")
 
 
@@ -234,14 +256,34 @@ def compare_files_exact(a: Path, b: Path) -> Tuple[bool, str]:
     return True, "OK"
 
 
-def reconstruct_signature_from_log(log_path: Path, begin_sig: int, end_sig: int, out_sig: Path) -> None:
+def reconstruct_signature_from_log(
+    log_path: Path,
+    begin_sig: int,
+    end_sig: int,
+    out_sig: Path,
+    elf_bin: Optional[Path] = None,
+    load_addr: int = 0x80000000,
+) -> None:
     """
-    Build a signature dump (word-per-line, little-endian) by replaying stores in log-spike format.
-    Only stores that target [begin_sig, end_sig) are applied.
+    Build a signature dump (word-per-line, little-endian) by:
+    1. Initializing from ELF binary content (if provided), not all zeros
+    2. Replaying stores from log that target [begin_sig, end_sig)
+
+    This ensures the reconstructed signature matches what the DUT reads from memory,
+    including initial .data section values.
     """
     out_sig.parent.mkdir(parents=True, exist_ok=True)
     size = max(0, end_sig - begin_sig)
     mem = bytearray(size)
+
+    # Initialize from ELF binary content (not all zeros)
+    if elf_bin is not None and elf_bin.exists():
+        bin_data = elf_bin.read_bytes()
+        sig_offset = begin_sig - load_addr  # signature region offset in binary
+        if 0 <= sig_offset < len(bin_data):
+            copy_len = min(size, len(bin_data) - sig_offset)
+            if copy_len > 0:
+                mem[:copy_len] = bin_data[sig_offset : sig_offset + copy_len]
 
     with log_path.open("r", encoding="utf-8", errors="replace") as f:
         for line in f:
@@ -312,14 +354,12 @@ def main() -> int:
     outdir = args.outdir.resolve()
     outdir.mkdir(parents=True, exist_ok=True)
 
-    # Always keep a disassembly around for debugging.
-    # If Makefile already created it, don't redo work.
+    # Always keep a disassembly around for debugging (overwrite to avoid stale dumps).
     dump_path = outdir / (elf.name + ".dump")
-    if not dump_path.exists() or dump_path.stat().st_size == 0:
-        objdump_to_dump(elf, dump_path)
+    objdump_to_dump(elf, dump_path)
 
     hex_path = outdir / (elf.name + ".hex")
-    objcopy_to_hex(elf, hex_path)
+    bin_path = objcopy_to_hex(elf, hex_path)
 
     spike_log = outdir / (elf.name + ".spike.log")
     dut_log = outdir / (elf.name + ".dut.log")
@@ -391,7 +431,14 @@ def main() -> int:
             print("[SIG] empty region: FAIL (DUT signature file missing or non-empty)")
             ok = False
     else:
-        reconstruct_signature_from_log(spike_log, info.begin_sig, info.end_sig, spike_sig)
+        reconstruct_signature_from_log(
+            spike_log,
+            info.begin_sig,
+            info.end_sig,
+            spike_sig,
+            elf_bin=bin_path,
+            load_addr=info.load_addr,
+        )
         ok_sig, msg_sig = compare_files_exact(spike_sig, dut_sig)
         print(f"[SIG] compare: {'PASS' if ok_sig else 'FAIL'}")
         if not ok_sig:

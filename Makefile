@@ -33,7 +33,7 @@ build/asm-elf/%.elf: program/source/%_elf.S
 	  -o $@ $<
 
 build/asm-elf/%.dump: build/asm-elf/%.elf
-	/opt/riscv/bin/riscv64-unknown-elf-objdump -d -M numeric $< > $@
+	/opt/riscv/bin/riscv64-unknown-elf-objdump -d -s -j .text -j .data -M numeric $< > $@
 
 # Generic rules for self-tests (matches hazard-elf, load-elf, etc.)
 %-elf: build/asm-elf/%.elf build/asm-elf/%.dump
@@ -91,7 +91,7 @@ riscv-test: verilator
 	@test -n "$(ELF)" || (echo "Usage: make riscv-test ELF=<path-to-elf>"; exit 2)
 	@elf_path="$(ELF)"; case "$$elf_path" in /*) ;; *) elf_path="$(PWD)/$$elf_path";; esac; \
 	  outdir="$(PWD)/build/riscv-tests"; mkdir -p "$$outdir"; \
-	  /opt/riscv/bin/riscv64-unknown-elf-objdump -d -M numeric "$$elf_path" > "$$outdir/$$(basename "$$elf_path").dump"; \
+	  /opt/riscv/bin/riscv64-unknown-elf-objdump -d -s -j .text.init -j .data -M numeric "$$elf_path" > "$$outdir/$$(basename "$$elf_path").dump"; \
 	  python3 scripts/run_riscv_test_compare_spike.py --elf "$$elf_path" --outdir "$$outdir"
 
 .PHONY: riscv-tests

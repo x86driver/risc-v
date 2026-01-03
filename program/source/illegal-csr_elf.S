@@ -25,8 +25,9 @@ _start:
     # ------------------------------------------------------------
     li   x5, 0
     csrrw x0, mstatus, x5
-    li   x6, 0x123
+    li   x6, 0xFFFFFFFF
     csrrw x7, mstatus, x6     # x7 = old mstatus, expect 0
+    csrr x8, mstatus
     bne  x7, x0, t0_fail
 
 t0_done:

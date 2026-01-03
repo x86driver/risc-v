@@ -21,6 +21,9 @@ program/hex/%_prog.hex: program/source/%.S scripts/asm_to_hex.py
 # -------------------------------------------------------------------
 # Build simple "tohost" ELFs from program/source/*_elf.S for Spike-compare flow
 # -------------------------------------------------------------------
+# Keep disassembly dumps (GNU make may otherwise treat them as intermediate and delete them)
+.PRECIOUS: build/asm-elf/%.dump
+
 build/asm-elf/%.elf: program/source/%_elf.S
 	@mkdir -p build/asm-elf
 	/opt/riscv/bin/riscv64-unknown-elf-gcc \
@@ -70,7 +73,6 @@ risc-v.srcs/sources_1/ip/blk_mem_gen_0/uart-hello_prog.coe: program/source/uart-
 clean:
 	rm -f simv
 	rm -f program/hex/*_prog.hex
-	rm -f risc-v.srcs/sources_1/ip/blk_mem_gen_0/uart-hello_prog.coe
 	rm -rf build
 	rm -rf obj_dir
 
@@ -80,7 +82,7 @@ clean:
 .PHONY: verilator
 verilator:
 	verilator --binary --timing -Wall -Wno-fatal -DIVERILOG -I$(PWD)/rtl \
-	  --top-module tb_verilator $(PWD)/rtl/cpu.sv $(PWD)/sim/tb_verilator.sv -o simv_verilator
+	  --top-module tb_verilator $(PWD)/sim/tb_verilator.sv -o simv_verilator
 
 .PHONY: riscv-test
 # Usage:
@@ -88,7 +90,9 @@ verilator:
 riscv-test: verilator
 	@test -n "$(ELF)" || (echo "Usage: make riscv-test ELF=<path-to-elf>"; exit 2)
 	@elf_path="$(ELF)"; case "$$elf_path" in /*) ;; *) elf_path="$(PWD)/$$elf_path";; esac; \
-	  python3 scripts/run_riscv_test_compare_spike.py --elf "$$elf_path" --outdir "$(PWD)/build/riscv-tests"
+	  outdir="$(PWD)/build/riscv-tests"; mkdir -p "$$outdir"; \
+	  /opt/riscv/bin/riscv64-unknown-elf-objdump -d -M numeric "$$elf_path" > "$$outdir/$$(basename "$$elf_path").dump"; \
+	  python3 scripts/run_riscv_test_compare_spike.py --elf "$$elf_path" --outdir "$$outdir"
 
 .PHONY: riscv-tests
 # Usage:

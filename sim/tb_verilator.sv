@@ -1,5 +1,7 @@
 `timescale 1ns/1ps
 
+`include "cpu.sv"
+
 // Spike-like logging testbench:
 // - Loads a program hex (one 32-bit word per line) into instruction/data memories
 // - Runs the RTL in rtl/cpu.sv (top: riscv_cpu)
@@ -195,6 +197,29 @@ module tb_verilator;
         endcase
     endfunction
 
+    // Return the *architectural* CSR value after the instruction commits.
+    // NOTE: 我們在 negedge 寫 log，而 CSR 暫存器是在 posedge 才更新；
+    //       因此要印「commit 後的最終值」應該讀 csr_file 的 *_n（next-state）。
+    function automatic logic [31:0] csr_final_value(input int csr);
+        unique case (csr[11:0])
+            12'h300: csr_final_value = dut.csr_file_0.mstatus_n;
+            12'h310: csr_final_value = dut.csr_file_0.mstatush_n;
+            12'h302: csr_final_value = dut.csr_file_0.medeleg_n;
+            12'h303: csr_final_value = dut.csr_file_0.mideleg_n;
+            12'h304: csr_final_value = dut.csr_file_0.mie_n;
+            12'h305: csr_final_value = dut.csr_file_0.mtvec_n;
+            12'h105: csr_final_value = dut.csr_file_0.stvec_n;
+            12'h180: csr_final_value = dut.csr_file_0.satp_n;
+            12'h341: csr_final_value = dut.csr_file_0.mepc_n;
+            12'h342: csr_final_value = dut.csr_file_0.mcause_n;
+            12'h343: csr_final_value = dut.csr_file_0.mtval_n;
+            12'h3a0: csr_final_value = dut.csr_file_0.pmpcfg0_n;
+            12'h3b0: csr_final_value = dut.csr_file_0.pmpaddr0_n;
+            12'hf14: csr_final_value = dut.csr_file_0.mhartid;
+            default: csr_final_value = dut.wb_reg_write_data; // fallback
+        endcase
+    endfunction
+
     initial begin
         if (!$value$plusargs("LOG=%s", logfile)) begin
             logfile = "log.txt";
@@ -367,7 +392,7 @@ module tb_verilator;
                 if (dut.wb_CsrWrite) begin
                     csr_dec = dut.wb_CsrWriteImm12;
                     if (printed) $fwrite(log_fd, " ");
-                    $fwrite(log_fd, "c%0d_%s 0x%08x", csr_dec, csr_name(csr_dec), dut.wb_reg_write_data);
+                    $fwrite(log_fd, "c%0d_%s 0x%08x", csr_dec, csr_name(csr_dec), csr_final_value(csr_dec));
                     printed = 1'b1;
                     need_trailing_space = 1'b1;
                 end

@@ -461,3 +461,10 @@ mret 有問題 (請看除錯全流程)
 1. AXI 接線錯誤 改好後模擬可以過
 2. 燒到 FPGA 沒任何東西
 3. 結果是 uart.sv m_axi_awaddr 寬度寫錯, 而且 cpu.sv write_data 接錯線
+
+
+2026/01/01
+==============
+
+1. illegal-csr 錯誤可能是因為 mstatus 要檢查有一些 bit 不能直接寫入
+2. csr_file 要用 rst_n 初始化

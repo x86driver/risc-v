@@ -27,6 +27,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 RISCV_BIN = Path("/opt/riscv/bin")
 SPIKE = RISCV_BIN / "spike"
+OBJDUMP = RISCV_BIN / "riscv64-unknown-elf-objdump"
 OBJCOPY = RISCV_BIN / "riscv64-unknown-elf-objcopy"
 
 
@@ -100,6 +101,15 @@ def objcopy_to_hex(elf: Path, out_hex: Path) -> None:
     tmp_bin.unlink(missing_ok=True)
 
 
+def objdump_to_dump(elf: Path, out_dump: Path) -> None:
+    """
+    Produce a disassembly dump for debugging (always deterministic for a given ELF).
+    """
+    out_dump.parent.mkdir(parents=True, exist_ok=True)
+    dump_txt = run_checked([str(OBJDUMP), "-d", "-M", "numeric", str(elf)]).stdout
+    out_dump.write_text(dump_txt, encoding="utf-8", errors="replace")
+
+
 # Spike commit lines include current privilege as a single digit (0=U,1=S,3=M):
 #   core   0: 3 0x80000000 (0x0500006f) ...
 _SPIKE_COMMIT_RE = re.compile(
@@ -150,10 +160,13 @@ def spike_trimmed_log(elf: Path, out_log: Path, *, isa: str, max_instructions: i
     raw_log = out_log.with_suffix(".raw.log")
 
     # Produce a raw Spike log (can be large); we will trim while converting.
+    # Use --priv=m to match DUT behavior (M-mode only, no S-mode).
+    # This ensures mstatus.FS is hardwired to 0 when F extension is not present.
     run_checked(
         [
             str(SPIKE),
             f"--isa={isa}",
+            "--priv=m",
             "--log-commits",
             "-l",
             f"--log={raw_log}",
@@ -299,6 +312,12 @@ def main() -> int:
     outdir = args.outdir.resolve()
     outdir.mkdir(parents=True, exist_ok=True)
 
+    # Always keep a disassembly around for debugging.
+    # If Makefile already created it, don't redo work.
+    dump_path = outdir / (elf.name + ".dump")
+    if not dump_path.exists() or dump_path.stat().st_size == 0:
+        objdump_to_dump(elf, dump_path)
+
     hex_path = outdir / (elf.name + ".hex")
     objcopy_to_hex(elf, hex_path)
 
@@ -319,7 +338,6 @@ def main() -> int:
                 f"-I{Path.cwd() / 'rtl'}",
                 "--top-module",
                 "tb_verilator",
-                str(Path.cwd() / "rtl" / "cpu.sv"),
                 str(Path.cwd() / "sim" / "tb_verilator.sv"),
                 "-o",
                 "simv_verilator",

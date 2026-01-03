@@ -391,8 +391,33 @@ module register_file(
 
 endmodule
 
+typedef struct packed {
+    logic        SD;        // [31]    Dirty summary
+    logic [7:0]  _reserved1;// [30:23] Reserved (WPRI)
+    logic        TSR;       // [22]    Trap SRET
+    logic        TW;        // [21]    Timeout Wait
+    logic        TVM;       // [20]    Trap Virtual Memory
+    logic        MXR;       // [19]    Make eXecutable Readable
+    logic        SUM;       // [18]    permit Supervisor User Memory access
+    logic        MPRV;      // [17]    Modify PRiVilege
+    logic [1:0]  XS;        // [16:15] user eXtension Status
+    logic [1:0]  FS;        // [14:13] Floating-point Status
+    logic [1:0]  MPP;       // [12:11] Machine Previous Privilege
+    logic [1:0]  _reserved0;// [10:9]  Reserved (WPRI)
+    logic        SPP;       // [8]     Supervisor Previous Privilege
+    logic        MPIE;      // [7]     Machine Previous Interrupt Enable
+    logic        UBE;       // [6]     User Big Endian (RV32 only)
+    logic        SPIE;      // [5]     Supervisor Previous Interrupt Enable
+    logic        _reserved2;// [4]     Reserved
+    logic        MIE;       // [3]     Machine Interrupt Enable
+    logic        _reserved3;// [2]     Reserved
+    logic        SIE;       // [1]     Supervisor Interrupt Enable
+    logic        _reserved4;// [0]     Reserved
+} mstatus_t;
+
 module csr_file(
     input  logic        clk,
+    input  logic        rst_n,
     input  logic [31:0] id_inst,
     input  logic [31:0] id_pc,
     input  logic        CsrWrite,
@@ -414,7 +439,7 @@ module csr_file(
 
     // Minimal CSR set required by riscv-tests/spike boot flow.
     // NOTE: For now these are simple 32-bit regs (no WARL enforcement yet).
-    logic [31:0] mstatus  = 32'h0000_0000;
+    mstatus_t    mstatus  = 32'h0000_1800;
     logic [31:0] mstatush = 32'h0000_0000;
     logic [31:0] mtvec    = 32'h0000_0000;
     logic [31:0] mepc     = 32'h0000_0000;
@@ -432,7 +457,8 @@ module csr_file(
     // Keep unimplemented for now to match Spike's illegal-instruction behavior.
 
     // next-state
-    logic [31:0] mstatus_n, mstatush_n;
+    mstatus_t    mstatus_n;
+    logic [31:0] mstatush_n;
     logic [31:0] mtvec_n, mepc_n, mcause_n, mtval_n;
     logic [31:0] medeleg_n, mideleg_n, mie_n, satp_n, stvec_n;
     logic [31:0] pmpcfg0_n, pmpaddr0_n;
@@ -443,8 +469,53 @@ module csr_file(
     assign csr_mepc  = mepc;
     assign csr_priv_mode = priv_mode;
 
+    // 定義 write mask (WPRI 位元為 0)
+    // 1 = 可寫 (R/W), 0 = 唯讀或保留 (Read-only / WPRI)
+    // 針對目標：RV32IMA + S-Mode (Linux Ready)
+    // localparam logic [31:0] MSTATUS_WRITE_MASK = {
+    //     1'b0,       // Bit 31: SD (Status Dirty) - 唯讀，由硬體自動計算
+    //     8'b0,       // Bits 30-23: WPRI (Reserved) - 必須為 0
+    //     1'b1,       // Bit 22: TSR (Trap SRET)
+    //     1'b1,       // Bit 21: TW (Timeout Wait)
+    //     1'b1,       // Bit 20: TVM (Trap Virtual Memory)
+    //     1'b1,       // Bit 19: MXR (Make Executable Readable)
+    //     1'b1,       // Bit 18: SUM (Supervisor User Memory Access)
+    //     1'b1,       // Bit 17: MPRV (Modify Privilege)
+    //     2'b00,      // Bits 16-15: XS (Extension Status) - 通常唯讀
+    //     2'b00,      // Bits 14-13: FS (Floating-point Status) - 目前 RV32I 為 0
+    //     2'b11,      // Bits 12-11: MPP (Machine Prev Priv)
+    //     2'b00,      // Bits 10-9: WPRI (Reserved)
+    //     1'b1,       // Bit 8: SPP (Supervisor Prev Priv)
+    //     1'b1,       // Bit 7: MPIE
+    //     1'b0,       // Bit 6: WPRI (Reserved / UBE)
+    //     1'b1,       // Bit 5: SPIE
+    //     1'b0,       // Bit 4: UPIE (User Interrupts) - Linux 通常不用 N 擴充，設 0
+    //     1'b1,       // Bit 3: MIE
+    //     1'b0,       // Bit 2: WPRI
+    //     1'b1,       // Bit 1: SIE
+    //     1'b0        // Bit 0: UIE (User Interrupts) - Linux 通常不用 N 擴充，設 0
+    // };
+    localparam logic [31:0] MSTATUS_WRITE_MASK = 32'h0020_1888; // 為了符合 spike --priv=m
+
+    function automatic mstatus_t mstatus_legalize(
+        input mstatus_t old_val,
+        input mstatus_t new_val
+    );
+        mstatus_t result;
+        // 保留 WPRI 位元
+        result = mstatus_t'((32'(new_val) & MSTATUS_WRITE_MASK) |
+                            (32'(old_val) & ~MSTATUS_WRITE_MASK));
+        // MPP WARL: 2'b10 是非法值
+        // if (result.MPP == 2'b10)
+            // result.MPP = 2'b00;
+        result.MPP = 2'b11; // FIXME
+        // SD 是唯讀，由 FS/XS 推導
+        result.SD = (result.FS == 2'b11) || (result.XS == 2'b11);
+        return result;
+    endfunction
+
     // ------------------------------
-    // CSR 讀取
+    // CSR 讀取 FIXME (spike --priv=m 會有一些 CSR 會變成 illegal, 之後要再加回來)
     // ------------------------------
     always_comb begin
         is_illegal_csr = 0;
@@ -455,14 +526,14 @@ module csr_file(
                 12'h341: csr_read_data = mepc;
                 12'h342: csr_read_data = mcause;
                 12'h343: csr_read_data = mtval;
-                12'h300: csr_read_data = mstatus;
+                12'h300: csr_read_data = 32'(mstatus);
                 12'h310: csr_read_data = mstatush;
                 12'hf14: csr_read_data = mhartid;
-                12'h302: csr_read_data = medeleg;
+                // 12'h302: csr_read_data = medeleg;
                 12'h303: csr_read_data = mideleg;
                 12'h304: csr_read_data = mie;
-                12'h180: csr_read_data = satp;
-                12'h105: csr_read_data = stvec;
+                // 12'h180: csr_read_data = satp;
+                // 12'h105: csr_read_data = stvec;
                 12'h3a0: csr_read_data = pmpcfg0;
                 12'h3b0: csr_read_data = pmpaddr0;
                 default: begin
@@ -502,7 +573,7 @@ module csr_file(
                     12'h341: mepc_n    = {csr_write_data[31:1], 1'b0};  // 對齊 bit0=0
                     12'h342: mcause_n  = csr_write_data;
                     12'h343: mtval_n   = csr_write_data;
-                    12'h300: mstatus_n = csr_write_data;                // 先不嚴格檢查各位元
+                    12'h300: mstatus_n = mstatus_legalize(mstatus_n, csr_write_data);
                     12'h310: mstatush_n= csr_write_data;
                     12'h302: medeleg_n = csr_write_data;
                     12'h303: mideleg_n = csr_write_data;
@@ -519,7 +590,7 @@ module csr_file(
                     12'h341: mepc_n    |= {csr_write_data[31:1], 1'b0};  // 對齊 bit0=0
                     12'h342: mcause_n  |= csr_write_data;
                     12'h343: mtval_n   |= csr_write_data;
-                    12'h300: mstatus_n |= csr_write_data;                // 先不嚴格檢查各位元
+                    12'h300: mstatus_n |= csr_write_data;                // FIXME 先不嚴格檢查各位元
                     12'h310: mstatush_n|= csr_write_data;
                     12'h302: medeleg_n |= csr_write_data;
                     12'h303: mideleg_n |= csr_write_data;
@@ -536,7 +607,7 @@ module csr_file(
                     12'h341: mepc_n    &= ~{csr_write_data[31:1], 1'b0};  // 對齊 bit0=0
                     12'h342: mcause_n  &= ~csr_write_data;
                     12'h343: mtval_n   &= ~csr_write_data;
-                    12'h300: mstatus_n &= ~csr_write_data;                // 先不嚴格檢查各位元
+                    12'h300: mstatus_n &= ~csr_write_data;                // FIXME 先不嚴格檢查各位元
                     12'h310: mstatush_n&= ~csr_write_data;
                     12'h302: medeleg_n &= ~csr_write_data;
                     12'h303: mideleg_n &= ~csr_write_data;
@@ -558,18 +629,18 @@ module csr_file(
 
             // mstatus：MPIE <- MIE, MIE <- 0, MPP <- M(2'b11)
             // 注意：這裡用的是 mstatus_n（已反映同拍 CSR 寫入後的值）
-            mstatus_n[7]     = mstatus_n[3];  // MPIE <- MIE
-            mstatus_n[3]     = 1'b0;          // MIE  <- 0
-            mstatus_n[12:11] = priv_mode;     // MPP  <- previous priv
+            mstatus_n.MPIE   = mstatus_n.MIE;
+            mstatus_n.MIE    = 1'b0;
+            mstatus_n.MPP    = priv_mode;
             priv_mode_n      = 2'b11;         // enter M-mode
         end else if (ex_trap_mret) begin
             // mret:
             // - return to MPP
             // - MIE <- MPIE; MPIE <- 1; MPP <- U(0)
-            priv_mode_n      = mstatus_n[12:11];
-            mstatus_n[3]     = mstatus_n[7];  // MIE  <- MPIE
-            mstatus_n[7]     = 1'b1;          // MPIE <- 1
-            mstatus_n[12:11] = 2'b00;         // MPP  <- U
+            priv_mode_n      = mstatus_n.MPP;
+            mstatus_n.MIE    = mstatus_n.MPIE;
+            mstatus_n.MPIE   = 1'b1;
+            mstatus_n.MPP    = 2'b11; // FIXME, 目前為了讓 spike 能跑過
         end
     end
 
@@ -577,20 +648,38 @@ module csr_file(
     // 狀態暫存器更新
     // ------------------------------
     always_ff @(posedge clk) begin
-        mstatus <= mstatus_n;
-        mstatush<= mstatush_n;
-        mtvec   <= mtvec_n;
-        mepc    <= mepc_n;
-        mcause  <= mcause_n;
-        mtval   <= mtval_n;
-        medeleg <= medeleg_n;
-        mideleg <= mideleg_n;
-        mie     <= mie_n;
-        satp    <= satp_n;
-        stvec   <= stvec_n;
-        pmpcfg0 <= pmpcfg0_n;
-        pmpaddr0<= pmpaddr0_n;
-        priv_mode <= priv_mode_n;
+        if (!rst_n) begin
+            mstatus   <= 32'h0000_1800;
+            mstatush  <= 32'h0000_0000;
+            mtvec     <= 32'h0000_0000;
+            mepc      <= 32'h0000_0000;
+            mcause    <= 32'h0000_0000;
+            mtval     <= 32'h0000_0000;
+            mhartid   <= 32'h0000_0000;
+            medeleg   <= 32'h0000_0000;
+            mideleg   <= 32'h0000_0000;
+            mie       <= 32'h0000_0000;
+            satp      <= 32'h0000_0000;
+            stvec     <= 32'h0000_0000;
+            pmpcfg0   <= 32'h0000_0000;
+            pmpaddr0  <= 32'h0000_0000;
+            priv_mode <= 2'b11;
+        end else begin
+            mstatus <= mstatus_n;
+            mstatush<= mstatush_n;
+            mtvec   <= mtvec_n;
+            mepc    <= mepc_n;
+            mcause  <= mcause_n;
+            mtval   <= mtval_n;
+            medeleg <= medeleg_n;
+            mideleg <= mideleg_n;
+            mie     <= mie_n;
+            satp    <= satp_n;
+            stvec   <= stvec_n;
+            pmpcfg0 <= pmpcfg0_n;
+            pmpaddr0<= pmpaddr0_n;
+            priv_mode <= priv_mode_n;
+        end
     end
 
 endmodule
@@ -2589,6 +2678,7 @@ module riscv_cpu #(
 
     csr_file csr_file_0(
         .clk(clk),
+        .rst_n(rst_n),
         .id_inst(id_inst),
         .id_pc(id_pc),
         .CsrWrite(wb_CsrWrite),

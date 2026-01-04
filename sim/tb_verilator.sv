@@ -51,8 +51,9 @@ module tb_verilator;
 
     logic [7:0]  leds;
 
-    // Match Spike default boot flow: reset vector at 0x0000_1000
-    riscv_cpu #(.RESET_PC(32'h0000_1000)) dut (
+    // Start directly at program entry (default: 0x8000_0000 for riscv-tests)
+    // Override at compile time with -GRESET_PC=... if needed.
+    riscv_cpu #(.RESET_PC(32'h8000_0000)) dut (
         .clk(clk),
         .btn_reset_n(btn_reset_n),
 
@@ -136,7 +137,6 @@ module tb_verilator;
     // ----------------------------
     // Program load (+HEX=...)
     // ----------------------------
-    logic [31:0] entry_pc;
     initial begin
         string hexfile;
         if ($value$plusargs("HEX=%s", hexfile)) begin
@@ -145,25 +145,7 @@ module tb_verilator;
             // Optional: also preload data memory (OK if code+data share one image)
             $readmemh(hexfile, dut.data_memory_multicycle_0.mem);
 
-            // Spike boot ROM expects a pointer to program entry at 0x0000_1018.
-            // Default entry for riscv-tests is usually 0x8000_0000, but allow override.
-            entry_pc = 32'h8000_0000;
-            void'($value$plusargs("ENTRY=%h", entry_pc));
-
-            // Patch Spike's minimal boot ROM at 0x0000_1000:
-            // 0x1000: auipc t0,0
-            // 0x1004: addi  a1,t0,0x20
-            // 0x1008: csrr  a0,mhartid
-            // 0x100c: lw    t0,0x18(t0)   // load entry from 0x1018
-            // 0x1010: jr    t0
-            dut.inst_mem_multicycle_0.mem[(32'h0000_1000 >> 2)] = 32'h0000_0297;
-            dut.inst_mem_multicycle_0.mem[(32'h0000_1004 >> 2)] = 32'h0202_8593;
-            dut.inst_mem_multicycle_0.mem[(32'h0000_1008 >> 2)] = 32'hf140_2573;
-            dut.inst_mem_multicycle_0.mem[(32'h0000_100c >> 2)] = 32'h0182_a283;
-            dut.inst_mem_multicycle_0.mem[(32'h0000_1010 >> 2)] = 32'h0002_8067;
-
-            // Put the entry pointer where the boot ROM loads it from.
-            dut.data_memory_multicycle_0.mem[(32'h0000_1018 >> 2)] = entry_pc;
+            // No boot ROM patch needed - CPU starts directly at RESET_PC (0x8000_0000).
         end else begin
             $display("[tb_verilator] ERROR: missing +HEX=<path-to-hex>");
             $finish;

@@ -177,7 +177,9 @@ def _format_log_spike_style(tokens: List[str]) -> str:
     return " ".join(tokens) + " \n"
 
 
-def spike_trimmed_log(elf: Path, out_log: Path, *, isa: str, max_instructions: int, tohost: int) -> None:
+def spike_trimmed_log(
+    elf: Path, out_log: Path, *, isa: str, max_instructions: int, tohost: int, entry: int
+) -> None:
     out_log.parent.mkdir(parents=True, exist_ok=True)
     raw_log = out_log.with_suffix(".raw.log")
 
@@ -209,6 +211,17 @@ def spike_trimmed_log(elf: Path, out_log: Path, *, isa: str, max_instructions: i
             pc = m.group(2)
             inst = m.group(3)
             tail = m.group(4).strip()
+
+            # Skip Spike boot ROM instructions (PC < entry point).
+            # Spike starts at 0x1000 boot ROM, then jumps to program entry (e.g. 0x80000000).
+            # Our RTL starts directly at entry, so we skip the boot ROM portion of the log.
+            try:
+                pc_val = int(pc, 16)
+            except ValueError:
+                continue
+            if pc_val < entry:
+                continue
+
             tokens = [pc, inst] + (tail.split() if tail else [])
 
             # Drop load address if present (keep store addr+data).
@@ -390,13 +403,14 @@ def main() -> int:
         print("Missing Verilator binary: obj_dir/simv_verilator (run with --build-verilator)", file=sys.stderr)
         return 2
 
-    # Golden (Spike) log (trimmed to first tohost write)
+    # Golden (Spike) log (trimmed to first tohost write, skipping boot ROM)
     spike_trimmed_log(
         elf,
         spike_log,
         isa=args.isa,
         max_instructions=args.spike_max_instructions,
         tohost=info.tohost,
+        entry=info.entry,
     )
 
     # DUT run (stops on first tohost write by design)

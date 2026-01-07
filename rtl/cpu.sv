@@ -1488,6 +1488,8 @@ module control_hazard_detection_unit(
     input logic [31:0] ex_imm32,
     input logic [31:0] ex_mux3to1_alu_a_out,
     input logic [31:0] ex_mux3to1_alu_b_out,
+    input logic ex_MemRead,
+    input logic ex_MemWrite,
     input logic [31:0] ex_csr_mtvec,
     input logic [31:0] ex_csr_mepc,
     input logic  ex_is_illegal_csr,
@@ -1508,6 +1510,8 @@ module control_hazard_detection_unit(
     logic is_jalr = 0;
     logic is_ecall = 0;
     logic is_mret = 0;
+    logic is_misaligned_read = 0;
+    logic is_misalgined_write = 0;
 
     always_comb begin
         branch_taken      = 1'b0;
@@ -1518,12 +1522,15 @@ module control_hazard_detection_unit(
         is_jalr           = 1'b0;
         is_ecall          = 1'b0;
         is_mret           = 1'b0;
+        is_misaligned_read  = 1'b0;
+        is_misalgined_write = 1'b0;
         ex_trap_take      = 1'b0;
         ex_trap_mret      = 1'b0;
         ex_trap_pc        = 0;
         ex_trap_cause     = 0;
         ex_trap_tval      = 0;
         pc_branch_target  = ex_pc;
+
         case (ex_inst[6:0])
             7'b1100011: begin // branch
                 unique case(ex_inst[14:12])
@@ -1587,6 +1594,11 @@ module control_hazard_detection_unit(
             branch_taken = 1;
         end
 
+        if (ex_MemRead && ex_mux3to1_alu_a_out[1:0] != 2'b00) begin
+            branch_taken = 1;
+            is_misaligned_read = 1;
+        end
+
         if (branch_taken) begin
             pc_branch_sel    = 1'b1;              // pc mux 選 branch
             if (is_jal) begin
@@ -1637,6 +1649,12 @@ module control_hazard_detection_unit(
                 if (pc_branch_target == 0) begin
                     $finish;
                 end
+            end else if (is_misaligned_read) begin
+                ex_trap_take = 1'b1;
+                ex_trap_pc = ex_pc;
+                ex_trap_cause = 4; // RISC-V ISA Volume II p.49
+                ex_trap_tval = ex_mux3to1_alu_a_out;
+                pc_branch_target = ex_csr_mtvec;
             end else begin
                 pc_branch_target = ex_pc + ex_imm32;  // 計算好的目標位址
             end
@@ -2284,6 +2302,8 @@ module riscv_cpu #(
         .ex_imm32(ex_imm32),
         .ex_mux3to1_alu_a_out(mux3to1_alu_a_out),
         .ex_mux3to1_alu_b_out(mux3to1_alu_b_out),
+        .ex_MemRead(ex_MemRead),
+        .ex_MemWrite(ex_MemWrite),
         .ex_csr_mtvec(ex_csr_mtvec),
         .ex_csr_mepc(ex_csr_mepc),
         .ex_is_illegal_csr(ex_is_illegal_csr),

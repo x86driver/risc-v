@@ -91,7 +91,11 @@ riscv-test: verilator
 	@test -n "$(ELF)" || (echo "Usage: make riscv-test ELF=<path-to-elf>"; exit 2)
 	@elf_path="$(ELF)"; case "$$elf_path" in /*) ;; *) elf_path="$(PWD)/$$elf_path";; esac; \
 	  outdir="$(PWD)/build/riscv-tests"; mkdir -p "$$outdir"; \
-	  /opt/riscv/bin/riscv64-unknown-elf-objdump -d -s -j .text.init -j .data -M numeric "$$elf_path" > "$$outdir/$$(basename "$$elf_path").dump"; \
+	  sections=$$(/opt/riscv/bin/riscv64-unknown-elf-objdump -h "$$elf_path" | awk '/^[[:space:]]*[0-9]+/ {print $$2}' | grep -E '^\.(text(\.init)?|data)$$'); \
+	  dump_cmd="/opt/riscv/bin/riscv64-unknown-elf-objdump -d -s -M numeric"; \
+	  for s in $$sections; do dump_cmd="$$dump_cmd -j $$s"; done; \
+	  $$dump_cmd "$$elf_path" > "$$outdir/$$(basename "$$elf_path").dump" 2>&1 || \
+	    /opt/riscv/bin/riscv64-unknown-elf-objdump -d -s -M numeric "$$elf_path" > "$$outdir/$$(basename "$$elf_path").dump"; \
 	  python3 scripts/run_riscv_test_compare_spike.py --elf "$$elf_path" --outdir "$$outdir"
 
 .PHONY: riscv-tests

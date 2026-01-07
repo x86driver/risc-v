@@ -126,9 +126,28 @@ def objdump_to_dump(elf: Path, out_dump: Path) -> None:
     Produce a disassembly dump for debugging (always deterministic for a given ELF).
     """
     out_dump.parent.mkdir(parents=True, exist_ok=True)
-    dump_txt = run_checked(
-        [str(OBJDUMP), "-d", "-j", ".text.init", "-j", ".data", "-M", "numeric", str(elf)]
-    ).stdout
+    # Get list of sections in the ELF file
+    sections_output = run_checked([str(OBJDUMP), "-h", str(elf)]).stdout
+    sections = []
+    for line in sections_output.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[0].isdigit():
+            section_name = parts[1]
+            # Include .text.init, .text, and .data sections if they exist
+            if section_name in (".text.init", ".text", ".data"):
+                sections.append(section_name)
+
+    # Build objdump command with available sections
+    cmd = [str(OBJDUMP), "-d", "-M", "numeric", str(elf)]
+    if sections:
+        # Add -j for each section
+        for sec in sections:
+            cmd.extend(["-j", sec])
+    else:
+        # If no matching sections found, just disassemble all (fallback)
+        cmd.append("-d")
+
+    dump_txt = run_checked(cmd).stdout
     out_dump.write_text(dump_txt, encoding="utf-8", errors="replace")
 
 
@@ -453,11 +472,15 @@ def main() -> int:
             elf_bin=bin_path,
             load_addr=info.load_addr,
         )
-        ok_sig, msg_sig = compare_files_exact(spike_sig, dut_sig)
-        print(f"[SIG] compare: {'PASS' if ok_sig else 'FAIL'}")
-        if not ok_sig:
-            print(msg_sig)
+        if not dut_sig.exists():
+            print(f"[SIG] compare: FAIL (DUT signature file missing: {dut_sig})")
             ok = False
+        else:
+            ok_sig, msg_sig = compare_files_exact(spike_sig, dut_sig)
+            print(f"[SIG] compare: {'PASS' if ok_sig else 'FAIL'}")
+            if not ok_sig:
+                print(msg_sig)
+                ok = False
 
     return 0 if ok else 1
 

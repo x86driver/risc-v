@@ -2,7 +2,7 @@
     .globl _start
     .option norvc
 
-// misaligned_elf.S
+// misaligned_lw_elf.S
 // - RV32I: Misaligned LW 應觸發例外 (mcause=4: Load address misaligned)
 // - 本 repo 的 runner 會在第一次「寫入非 0 的 tohost」時停止比對：
 //   我們一律在結尾寫 tohost=1，真正 PASS/FAIL 由 Spike-vs-DUT 的 log + signature 比對決定。
@@ -13,11 +13,11 @@ _start:
     li  x31, 0                 # fail_bits accumulator (recorded to signature at end)
 
     # signature init
-    # sw  x0, 0(x2)              # trap_count = 0
-    # sw  x0, 4(x2)              # fail_bits_sig = 0
-    # sw  x0, 8(x2)              # last_mcause = 0
-    # sw  x0, 12(x2)             # last_mepc = 0
-    # sw  x0, 16(x2)             # last_mtval = 0
+    sw  x0, 0(x2)              # trap_count = 0
+    sw  x0, 4(x2)              # fail_bits_sig = 0
+    sw  x0, 8(x2)              # last_mcause = 0
+    sw  x0, 12(x2)             # last_mepc = 0
+    sw  x0, 16(x2)             # last_mtval = 0
 
     # install mtvec (direct mode)
     la   x17, trap_handler

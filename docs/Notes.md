@@ -470,7 +470,8 @@ mret 有問題 (請看除錯全流程)
 2. csr_file 要用 rst_n 初始化
 
 
-01/06
+01/06-09
 ==============
 
 1. 用 ex_mux3to1_alu_a_out 應該就能得到 memory access 所需的位址 而不需要 ex_alu_out
+2. 下一步 rv32mi-p-lw-misaligned

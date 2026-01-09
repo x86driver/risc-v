@@ -1511,7 +1511,7 @@ module control_hazard_detection_unit(
     logic is_ecall = 0;
     logic is_mret = 0;
     logic is_misaligned_read = 0;
-    logic is_misalgined_write = 0;
+    logic is_misaligned_write = 0;
 
     always_comb begin
         branch_taken      = 1'b0;
@@ -1523,7 +1523,7 @@ module control_hazard_detection_unit(
         is_ecall          = 1'b0;
         is_mret           = 1'b0;
         is_misaligned_read  = 1'b0;
-        is_misalgined_write = 1'b0;
+        is_misaligned_write = 1'b0;
         ex_trap_take      = 1'b0;
         ex_trap_mret      = 1'b0;
         ex_trap_pc        = 0;
@@ -1599,6 +1599,11 @@ module control_hazard_detection_unit(
             is_misaligned_read = 1;
         end
 
+        if (ex_MemWrite && ex_mux3to1_alu_a_out[1:0] != 2'b00) begin
+            branch_taken = 1;
+            is_misaligned_write = 1;
+        end
+
         if (branch_taken) begin
             pc_branch_sel    = 1'b1;              // pc mux 選 branch
             if (is_jal) begin
@@ -1653,6 +1658,12 @@ module control_hazard_detection_unit(
                 ex_trap_take = 1'b1;
                 ex_trap_pc = ex_pc;
                 ex_trap_cause = 4; // RISC-V ISA Volume II p.49
+                ex_trap_tval = ex_mux3to1_alu_a_out;
+                pc_branch_target = ex_csr_mtvec;
+            end else if (is_misaligned_write) begin
+                ex_trap_take = 1'b1;
+                ex_trap_pc = ex_pc;
+                ex_trap_cause = 6; // Store/AMO address misaligned
                 ex_trap_tval = ex_mux3to1_alu_a_out;
                 pc_branch_target = ex_csr_mtvec;
             end else begin

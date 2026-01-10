@@ -1488,6 +1488,7 @@ module control_hazard_detection_unit(
     input logic [31:0] ex_imm32,
     input logic [31:0] ex_mux3to1_alu_a_out,
     input logic [31:0] ex_mux3to1_alu_b_out,
+    input logic [31:0] ex_alu_out,
     input logic ex_MemRead,
     input logic ex_MemWrite,
     input logic [31:0] ex_csr_mtvec,
@@ -1594,14 +1595,30 @@ module control_hazard_detection_unit(
             branch_taken = 1;
         end
 
-        if (ex_MemRead && ex_mux3to1_alu_a_out[1:0] != 2'b00) begin
-            branch_taken = 1;
-            is_misaligned_read = 1;
+        if (ex_MemRead) begin
+            casez (ex_inst[14:12]) // funct3
+                3'h0: is_misaligned_read = 0;                // lb
+                3'h1: is_misaligned_read = ex_alu_out[0];    // lh
+                3'h2: is_misaligned_read = |ex_alu_out[1:0]; // lw
+                3'h4: is_misaligned_read = 0;                // lbu
+                3'h5: is_misaligned_read = ex_alu_out[0];    // lhu
+                default: is_misaligned_read = 0;
+            endcase
+            if (is_misaligned_read) begin
+                branch_taken = 1;
+            end
         end
 
-        if (ex_MemWrite && ex_mux3to1_alu_a_out[1:0] != 2'b00) begin
-            branch_taken = 1;
-            is_misaligned_write = 1;
+        if (ex_MemWrite) begin
+            casez (ex_inst[14:12]) // funct3
+                3'h0: is_misaligned_write = 0;                // sb
+                3'h1: is_misaligned_write = ex_alu_out[0];    // sh
+                3'h2: is_misaligned_write = |ex_alu_out[1:0]; // sw
+                default: is_misaligned_write = 0;
+            endcase
+            if (is_misaligned_write) begin
+                branch_taken = 1;
+            end
         end
 
         if (branch_taken) begin
@@ -1658,13 +1675,13 @@ module control_hazard_detection_unit(
                 ex_trap_take = 1'b1;
                 ex_trap_pc = ex_pc;
                 ex_trap_cause = 4; // RISC-V ISA Volume II p.49
-                ex_trap_tval = ex_mux3to1_alu_a_out;
+                ex_trap_tval = ex_alu_out;
                 pc_branch_target = ex_csr_mtvec;
             end else if (is_misaligned_write) begin
                 ex_trap_take = 1'b1;
                 ex_trap_pc = ex_pc;
                 ex_trap_cause = 6; // Store/AMO address misaligned
-                ex_trap_tval = ex_mux3to1_alu_a_out;
+                ex_trap_tval = ex_alu_out;
                 pc_branch_target = ex_csr_mtvec;
             end else begin
                 pc_branch_target = ex_pc + ex_imm32;  // 計算好的目標位址
@@ -2313,6 +2330,7 @@ module riscv_cpu #(
         .ex_imm32(ex_imm32),
         .ex_mux3to1_alu_a_out(mux3to1_alu_a_out),
         .ex_mux3to1_alu_b_out(mux3to1_alu_b_out),
+        .ex_alu_out(ex_alu_out),
         .ex_MemRead(ex_MemRead),
         .ex_MemWrite(ex_MemWrite),
         .ex_csr_mtvec(ex_csr_mtvec),

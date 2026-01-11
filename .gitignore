@@ -44,3 +44,4 @@ xsim.ini.bak
 .vscode
 build/
 obj_dir/
+__pycache__

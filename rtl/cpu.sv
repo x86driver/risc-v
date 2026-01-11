@@ -1913,6 +1913,11 @@ module power_on_reset(
 
     localparam RESET_CYCLE = 10;
     integer counter = 0;
+
+    initial begin
+        rst_n = 1'b0;
+    end
+
     always_ff @(posedge clk) begin
         if (!btn_reset_n) begin
             rst_n <= 0;
@@ -2679,7 +2684,7 @@ module riscv_cpu #(
     mux2to1 mux2to1_alu_a_csr_zimm(
         .sel(ex_csr_src_is_zimm),
         .A(mux3to1_alu_a_out_forward),
-        .B(ex_decoded_rs1),
+        .B({27'b0, ex_decoded_rs1}),  // Zero-extend 5-bit rs1/zimm to 32-bit
         .mux_out(mux3to1_alu_a_out)
     );
 

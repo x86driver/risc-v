@@ -176,3 +176,96 @@ build-hex-all:
 	    $(MAKE) -s program/hex/$${n}_prog.hex >/dev/null; \
 	  fi; \
 	done
+
+# -------------------------------------------------------------------
+# Vivado XSim Simulation Flow
+# -------------------------------------------------------------------
+# Vivado installation path
+VIVADO_PATH := $(HOME)/tools/Xilinx/2025.2/Vivado
+VIVADO_BIN  := $(VIVADO_PATH)/bin
+XSIM_SCRIPT := risc-v.sim/sim_1/behav/xsim/xsim/tb_design_1.sh
+
+# Run XSim simulation using exported script
+# Usage: make xsim
+# Note: Run 'make xsim-export' first if simulation scripts don't exist
+.PHONY: xsim
+xsim:
+	@if [ ! -f "$(XSIM_SCRIPT)" ]; then \
+	  echo "Simulation scripts not found. Running xsim-export first..."; \
+	  $(MAKE) xsim-export; \
+	fi
+	@echo "=== Running Vivado XSim Simulation ==="
+	cd $$(dirname $(XSIM_SCRIPT)) && \
+	  export PATH="$(VIVADO_BIN):$$PATH" && \
+	  bash tb_design_1.sh
+
+# Run only compile step
+.PHONY: xsim-compile
+xsim-compile:
+	@echo "=== Compiling design for XSim ==="
+	cd $$(dirname $(XSIM_SCRIPT)) && \
+	  export PATH="$(VIVADO_BIN):$$PATH" && \
+	  bash tb_design_1.sh -step compile
+
+# Run compile + elaborate
+.PHONY: xsim-elaborate
+xsim-elaborate:
+	@echo "=== Elaborating design for XSim ==="
+	cd $$(dirname $(XSIM_SCRIPT)) && \
+	  export PATH="$(VIVADO_BIN):$$PATH" && \
+	  bash tb_design_1.sh -step elaborate
+
+# Run simulation only (requires prior compile + elaborate)
+.PHONY: xsim-run
+xsim-run:
+	@echo "=== Running XSim simulation ==="
+	cd $$(dirname $(XSIM_SCRIPT)) && \
+	  export PATH="$(VIVADO_BIN):$$PATH" && \
+	  bash tb_design_1.sh -step simulate
+
+# Generate simulation scripts from Vivado project
+# Run this first in CI, or when Block Design / IP changes
+# This generates: tb_design_1.sh and all required support files
+.PHONY: xsim-export
+xsim-export:
+	@echo "=== Generating IP outputs and exporting simulation scripts ==="
+	$(VIVADO_BIN)/vivado -mode batch -nojournal -nolog -source scripts/export_sim.tcl
+
+# Full Vivado batch simulation via TCL (regenerates all scripts)
+# Usage: make vivado-sim
+# Usage: make vivado-sim SIM_TIME=5000ns
+SIM_TIME ?= 1000ns
+.PHONY: vivado-sim
+vivado-sim:
+	@echo "=== Running Vivado Simulation (batch mode) ==="
+	$(VIVADO_BIN)/vivado -mode batch -nojournal -nolog -source scripts/run_sim.tcl -tclargs $(SIM_TIME)
+
+# -------------------------------------------------------------------
+# XSim + Spike Comparison Flow (similar to Verilator flow but uses BRAM)
+# -------------------------------------------------------------------
+# Single test: make xsim-test ELF=/opt/riscv/target/share/riscv-tests/isa/rv32ui-p-add
+.PHONY: xsim-test
+xsim-test:
+	@test -n "$(ELF)" || (echo "Usage: make xsim-test ELF=<path-to-elf>"; exit 2)
+	@elf_path="$(ELF)"; case "$$elf_path" in /*) ;; *) elf_path="$(PWD)/$$elf_path";; esac; \
+	  python3 scripts/run_xsim_test_compare_spike.py \
+	    --elf "$$elf_path" \
+	    --outdir "$(PWD)/build/xsim-tests" \
+	    --isa "$${ISA:-rv32i}" \
+	    --vivado-path "$(VIVADO_PATH)" \
+	    --spike-max-instructions "$${SPIKE_MAX_INSN:-200000}" \
+	    --max-cycles "$${MAX_CYCLES:-200000}"
+
+# Quick test without regenerating IP (use after first run)
+.PHONY: xsim-test-quick
+xsim-test-quick:
+	@test -n "$(ELF)" || (echo "Usage: make xsim-test-quick ELF=<path-to-elf>"; exit 2)
+	@elf_path="$(ELF)"; case "$$elf_path" in /*) ;; *) elf_path="$(PWD)/$$elf_path";; esac; \
+	  python3 scripts/run_xsim_test_compare_spike.py \
+	    --elf "$$elf_path" \
+	    --outdir "$(PWD)/build/xsim-tests" \
+	    --isa "$${ISA:-rv32i}" \
+	    --vivado-path "$(VIVADO_PATH)" \
+	    --spike-max-instructions "$${SPIKE_MAX_INSN:-200000}" \
+	    --max-cycles "$${MAX_CYCLES:-200000}" \
+	    --skip-setup

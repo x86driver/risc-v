@@ -30,6 +30,7 @@ xsim.ini.bak
 *.vcd
 *.wcfg.bak
 risc-v.srcs/sources_1/ip/blk_mem_gen_0/bootrom.coe
+docs/questions.md
 
 # ============================================
 # Implementation Outputs (產出的燒錄檔)

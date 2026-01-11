@@ -323,8 +323,17 @@ def main() -> int:
     ap.add_argument("--max-cycles", type=int, default=200000)
     ap.add_argument("--vivado-path", default="/home/shane/tools/Xilinx/2025.2/Vivado",
                     help="Path to Vivado installation")
-    ap.add_argument("--skip-setup", action="store_true",
-                    help="Skip Vivado setup (use existing simulation scripts)")
+    ap.add_argument(
+        "--setup-mode",
+        choices=["full", "coe-only", "none"],
+        default="full",
+        help="Vivado setup mode: full (regen+export), coe-only (regen only), none (assume already set up)",
+    )
+    ap.add_argument(
+        "--skip-setup",
+        action="store_true",
+        help="DEPRECATED: same as --setup-mode none (kept for backward compatibility)",
+    )
     args = ap.parse_args()
 
     elf = args.elf.resolve()
@@ -347,13 +356,24 @@ def main() -> int:
     print(f"[INFO] Generated HEX: {hex_path}")
 
     # Setup Vivado simulation (update COE, regenerate IP, export scripts)
-    if not args.skip_setup:
-        print("[INFO] Setting up Vivado XSim simulation...")
+    setup_mode = args.setup_mode
+    if args.skip_setup:
+        setup_mode = "none"
+
+    if setup_mode == "none":
+        print("[INFO] Skipping Vivado setup (setup-mode=none)")
+    else:
+        if setup_mode == "full":
+            setup_tcl = project_root / "scripts/setup_xsim_test.tcl"
+        else:
+            setup_tcl = project_root / "scripts/update_xsim_coe.tcl"
+
+        print(f"[INFO] Vivado setup: mode={setup_mode} tcl={setup_tcl.name}")
         setup_cmd = [
             str(vivado_bin / "vivado"),
             "-mode", "batch",
             "-nojournal", "-nolog",
-            "-source", str(project_root / "scripts/setup_xsim_test.tcl"),
+            "-source", str(setup_tcl),
             "-tclargs", str(coe_path),
         ]
         try:
@@ -369,8 +389,6 @@ def main() -> int:
         except subprocess.CalledProcessError as e:
             print(f"[ERROR] Vivado setup failed:\n{e.stdout}", file=sys.stderr)
             return 2
-    else:
-        print("[INFO] Skipping Vivado setup (--skip-setup)")
 
     # Golden (Spike) log
     spike_log = outdir / (elf.name + ".spike.log")

@@ -243,6 +243,65 @@ make riscv-tests DIR=/opt/riscv/target/share/riscv-tests/isa PATTERN='rv32ui-p-*
 
 執行完會在 `build/riscv-tests/summary.txt` 產生 PASS/FAIL 總表。
 
+---
+
+## 2.5) XSim + Spike：跑 riscv-tests（ELF）並逐字比對 log + signature（BRAM/COE 版）
+
+這條流程跟 2) 的目標一樣：把 DUT 的提交 log / signature 做成 Spike 相容格式並 **逐字比對**，
+差別在於 DUT 不是 Verilator，而是 **Vivado XSim**，且指令記憶體使用 BRAM IP（`blk_mem_gen_0`）。
+
+### 跑單一 ELF（並與 Spike 逐字比對）
+
+```bash
+make xsim-test ELF=/opt/riscv/target/share/riscv-tests/isa/rv32ui-p-add
+```
+
+輸出檔會在 `build/xsim-tests/`：
+- `<name>.spike.log` / `<name>.xsim.log`：Spike vs XSim 的 commit log（**逐字比對**）
+- `<name>.spike.sig` / `<name>.xsim.sig`：signature dump（若該測試 signature 區間為空，sig 會是空檔）
+- `<name>.runner.txt`：完整比對過程（FAIL 時優先看這個）
+- `summary.txt`：suite 模式的 PASS/FAIL 總表
+
+### 跑一整套（預設跑 rv32ui-p-*）
+
+```bash
+make xsim-test
+# 或
+make xsim-tests
+```
+
+可用參數（環境變數，刻意對齊 `make riscv-tests` 的介面）：
+- `PATTERN`：要跑的檔名 glob（預設 `rv32ui-p-*`）
+- `DIR`：ELF 目錄（預設 `/opt/riscv/target/share/riscv-tests/isa`）
+- `LIMIT`：只跑前 N 個（smoke 用）
+- `FAIL_FAST=1`：遇到第一個 FAIL 就停止
+- `ISA`：Spike ISA 字串（預設 `rv32i`）
+- `SPIKE_MAX_INSN`：Spike 最多跑多少指令（預設 `200000`）
+- `MAX_CYCLES`：DUT 最多跑多少 cycle（預設 `200000`）
+
+範例：
+
+```bash
+make xsim-tests LIMIT=10 FAIL_FAST=1
+make xsim-tests PATTERN='rv32ui-p-*'
+make xsim-tests DIR=/opt/riscv/target/share/riscv-tests/isa PATTERN='rv32ui-p-*'
+```
+
+### 實作重點（為什麼 suite 需要這樣做）
+
+1) **XSim 的指令記憶體是 BRAM IP（COE 初始化）**
+- `tb_xsim.sv` 會用 `+HEX=<path>` 灌 **data memory**（`$readmemh`）。
+- 但 **instruction memory** 來自 `blk_mem_gen_0`，靠 `bootrom.coe` 初始化。
+- 因此跑 suite 時「每換一個 ELF」都必須更新 `bootrom.coe` 並 regenerate IP；否則會跑到舊程式。
+
+2) **為避免副作用：suite 每一次都使用 `setup-mode=full`**
+- 每個測試都會：更新 COE + regenerate IP + export simulation scripts
+- 測試之間狀態更乾淨、可預期性更高
+- 整體執行時間不會比較長, 而且這樣才能得到正確的結果, 否則如果用 `setup-mode=coe-only` 會出錯
+
+補充：
+- `make xsim-test-quick ELF=...` 會走舊的 `--skip-setup`（等同 `setup-mode=none`），只有在你確定環境已經對應到該測試程式時才適合用。
+
 ## 3) Verilator + 自己寫的單元測試 + Spike
 
 ```bash

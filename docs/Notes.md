@@ -475,3 +475,67 @@ mret 有問題 (請看除錯全流程)
 
 1. 用 ex_mux3to1_alu_a_out 應該就能得到 memory access 所需的位址 而不需要 ex_alu_out
 2. 下一步 rv32mi-p-lw-misaligned
+3. 錯 需要 ex_alu_out 因為這是最終算出記憶體位址的地方
+
+01/10
+==============
+
+1. 可以做一個專門的 module 來偵測 illegal instruction 再餵給 control_hazard_detection_unit
+2. 例如 shamt 的測試
+
+
+01/11
+==============
+
+dir=/opt/riscv/target/share/riscv-tests/isa
+pattern=rv32ui-p-*
+count=42
+PASS=30
+FAIL=12
+
+PASS rv32ui-p-add 25.78s
+PASS rv32ui-p-addi 27.52s
+PASS rv32ui-p-and 24.84s
+PASS rv32ui-p-andi 24.72s
+PASS rv32ui-p-auipc 27.85s
+PASS rv32ui-p-beq 26.44s
+PASS rv32ui-p-bge 23.46s
+PASS rv32ui-p-bgeu 25.26s
+PASS rv32ui-p-blt 26.25s
+PASS rv32ui-p-bltu 26.78s
+PASS rv32ui-p-bne 25.31s
+FAIL rv32ui-p-fence_i 27.66s
+PASS rv32ui-p-jal 26.96s
+PASS rv32ui-p-jalr 28.31s
+FAIL rv32ui-p-lb 25.02s
+FAIL rv32ui-p-lbu 26.73s
+FAIL rv32ui-p-ld_st 25.88s
+FAIL rv32ui-p-lh 25.52s
+FAIL rv32ui-p-lhu 25.84s
+PASS rv32ui-p-lui 24.75s
+FAIL rv32ui-p-lw 24.38s
+FAIL rv32ui-p-ma_data 18.83s
+PASS rv32ui-p-or 24.60s
+PASS rv32ui-p-ori 26.96s
+FAIL rv32ui-p-sb 24.75s
+FAIL rv32ui-p-sh 26.25s
+PASS rv32ui-p-simple 26.52s
+PASS rv32ui-p-sll 26.09s
+PASS rv32ui-p-slli 25.35s
+PASS rv32ui-p-slt 26.29s
+PASS rv32ui-p-slti 26.79s
+PASS rv32ui-p-sltiu 23.93s
+PASS rv32ui-p-sltu 27.86s
+PASS rv32ui-p-sra 25.63s
+PASS rv32ui-p-srai 26.35s
+PASS rv32ui-p-srl 25.98s
+PASS rv32ui-p-srli 26.61s
+FAIL rv32ui-p-st_ld 26.02s
+PASS rv32ui-p-sub 25.64s
+FAIL rv32ui-p-sw 25.68s
+PASS rv32ui-p-xor 25.48s
+PASS rv32ui-p-xori 26.15s
+
+real	18m3.077s
+user	46m13.155s
+sys	2m20.890s

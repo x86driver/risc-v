@@ -246,15 +246,35 @@ vivado-sim:
 # Single test: make xsim-test ELF=/opt/riscv/target/share/riscv-tests/isa/rv32ui-p-add
 .PHONY: xsim-test
 xsim-test:
-	@test -n "$(ELF)" || (echo "Usage: make xsim-test ELF=<path-to-elf>"; exit 2)
-	@elf_path="$(ELF)"; case "$$elf_path" in /*) ;; *) elf_path="$(PWD)/$$elf_path";; esac; \
+	@if [ -n "$(ELF)" ]; then \
+	  elf_path="$(ELF)"; case "$$elf_path" in /*) ;; *) elf_path="$(PWD)/$$elf_path";; esac; \
 	  python3 scripts/run_xsim_test_compare_spike.py \
 	    --elf "$$elf_path" \
 	    --outdir "$(PWD)/build/xsim-tests" \
 	    --isa "$${ISA:-rv32i}" \
 	    --vivado-path "$(VIVADO_PATH)" \
 	    --spike-max-instructions "$${SPIKE_MAX_INSN:-200000}" \
-	    --max-cycles "$${MAX_CYCLES:-200000}"
+	    --max-cycles "$${MAX_CYCLES:-200000}"; \
+	else \
+	  $(MAKE) xsim-tests; \
+	fi
+
+.PHONY: xsim-tests
+# Usage:
+#   make xsim-tests
+#   make xsim-tests PATTERN=rv32ui-p-* DIR=/opt/riscv/target/share/riscv-tests/isa
+#   make xsim-tests LIMIT=10 FAIL_FAST=1
+xsim-tests:
+	python3 scripts/run_xsim_tests_suite.py \
+	  --dir "$${DIR:-/opt/riscv/target/share/riscv-tests/isa}" \
+	  --pattern "$${PATTERN:-rv32ui-p-*}" \
+	  --outdir "$(PWD)/build/xsim-tests" \
+	  --isa "$${ISA:-rv32i}" \
+	  --vivado-path "$(VIVADO_PATH)" \
+	  --spike-max-instructions "$${SPIKE_MAX_INSN:-200000}" \
+	  --max-cycles "$${MAX_CYCLES:-200000}" \
+	  $$( [ "$${FAIL_FAST:-0}" = "1" ] && echo --fail-fast ) \
+	  $$( [ -n "$${LIMIT:-}" ] && echo --limit "$${LIMIT}" )
 
 # Quick test without regenerating IP (use after first run)
 .PHONY: xsim-test-quick

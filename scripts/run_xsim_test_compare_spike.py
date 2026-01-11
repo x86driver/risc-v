@@ -340,8 +340,8 @@ def main() -> int:
     vivado_bin = Path(args.vivado_path) / "bin"
     xsim_script_dir = project_root / "risc-v.sim/sim_1/behav/xsim/xsim"
 
-    # Convert ELF to COE and HEX
-    coe_path = outdir / (elf.name + ".coe")
+    # Convert ELF to COE and HEX (use fixed name to avoid git status changes)
+    coe_path = outdir / "bootrom.coe"
     hex_path = elf_to_coe(elf, coe_path)
     print(f"[INFO] Generated COE: {coe_path}")
     print(f"[INFO] Generated HEX: {hex_path}")

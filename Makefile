@@ -276,16 +276,12 @@ xsim-tests:
 	  $$( [ "$${FAIL_FAST:-0}" = "1" ] && echo --fail-fast ) \
 	  $$( [ -n "$${LIMIT:-}" ] && echo --limit "$${LIMIT}" )
 
-# Quick test without regenerating IP (use after first run)
+# Check if BRAM is correctly inferred (synthesis check)
+.PHONY: check-bram
+check-bram:
+	@echo "=== Checking BRAM Inference ==="
+	$(VIVADO_BIN)/vivado -mode batch -nojournal -nolog -source scripts/check_bram_inference.tcl
+
+# Alias for xsim-test (kept for backward compatibility)
 .PHONY: xsim-test-quick
-xsim-test-quick:
-	@test -n "$(ELF)" || (echo "Usage: make xsim-test-quick ELF=<path-to-elf>"; exit 2)
-	@elf_path="$(ELF)"; case "$$elf_path" in /*) ;; *) elf_path="$(PWD)/$$elf_path";; esac; \
-	  python3 scripts/run_xsim_test_compare_spike.py \
-	    --elf "$$elf_path" \
-	    --outdir "$(PWD)/build/xsim-tests" \
-	    --isa "$${ISA:-rv32i}" \
-	    --vivado-path "$(VIVADO_PATH)" \
-	    --spike-max-instructions "$${SPIKE_MAX_INSN:-200000}" \
-	    --max-cycles "$${MAX_CYCLES:-200000}" \
-	    --skip-setup
+xsim-test-quick: xsim-test

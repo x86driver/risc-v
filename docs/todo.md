@@ -21,6 +21,7 @@
 - [ ]（回退策略）只保留 `mux_id_MemRead` 相關，其它先不需要（或直接 copy old-risc-v 那份）
 - [ ] 加回去 `readmemh`
 - [x] 資料存取要 4-byte 對齊
+- [ ] 目前跑 0x80000000 都是把前面位址截斷
 
 ### 指令支援/控制 hazard
 - [x] AUIPC：實作指令
@@ -49,9 +50,11 @@
 - [x] 考慮 `ex_csr_mtvec` 是否可移除？ (不行 因為 pc_branch_target 會用到)
 - [x] 研究為什麼寫一個字元到 UART 會出現四個 write_done（`uart_stub_iverilog.sv` 卻沒有）
 
-### Misaligned / 測試項
+### 測試
 - [x] `rv32mi-p-lw-misaligned`
 - [ ] verilator 加上 -Wall -Werror-WIDTH
+- [ ] 讓 xsim 也可以跑 `program/source/*_elf.S`
+- [ ] lw/sw 系列的 xsim 都跑不過, 先寫一個簡單的 lw 試試看 (因為目前 imem/dmem 是分開的)
 
 ### 已完成
 - [x] ecall `00000073`（rd=0）

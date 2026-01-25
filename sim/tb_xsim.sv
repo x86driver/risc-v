@@ -116,18 +116,19 @@ module tb_xsim;
     );
 
     // ----------------------------
-    // No HEX load needed - BRAM IP is initialized from COE file
-    // Data memory still uses behavioral mem[], preload from same COE content
+    // Program load (+HEX=...)
+    // Load both instruction memory and data memory from the same HEX file
     // ----------------------------
     initial begin
         string hexfile;
-        // For data memory, we still need to load the HEX file
-        // (BRAM IP only initializes instruction memory)
         if ($value$plusargs("HEX=%s", hexfile)) begin
-            $display("[tb_xsim] Loading data memory from %0s", hexfile);
+            $display("[tb_xsim] Loading program from %0s", hexfile);
+            // Load instruction memory (true_dual_port_bram)
+            $readmemh(hexfile, dut.inst_mem_multicycle_0.imem.ram);
+            // Load data memory (for loads/stores)
             $readmemh(hexfile, dut.data_memory_multicycle_0.mem);
         end else begin
-            $display("[tb_xsim] WARNING: No +HEX specified, data memory uninitialized");
+            $display("[tb_xsim] WARNING: No +HEX specified, memories uninitialized");
         end
     end
 

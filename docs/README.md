@@ -287,23 +287,26 @@ make xsim-tests PATTERN='rv32ui-p-*'
 make xsim-tests DIR=/opt/riscv/target/share/riscv-tests/isa PATTERN='rv32ui-p-*'
 ```
 
-### 實作重點（為什麼 suite 需要這樣做）
+### 實作重點
 
-1) **XSim 的指令記憶體是 BRAM IP（COE 初始化）**
-- `tb_xsim.sv` 會用 `+HEX=<path>` 灌 **data memory**（`$readmemh`）。
-- 但 **instruction memory** 來自 `blk_mem_gen_0`，靠 `bootrom.coe` 初始化。
-- 因此跑 suite 時「每換一個 ELF」都必須更新 `bootrom.coe` 並 regenerate IP；否則會跑到舊程式。
-
-2) **為避免副作用：suite 每一次都使用 `setup-mode=full`**
-- 每個測試都會：更新 COE + regenerate IP + export simulation scripts
-- 測試之間狀態更乾淨、可預期性更高
-- 整體執行時間不會比較長, 而且這樣才能得到正確的結果, 否則如果用 `setup-mode=coe-only` 會出錯
+**XSim 記憶體載入方式**
+- `tb_xsim.sv` 使用 `+HEX=<path>` 透過 `$readmemh` 同時載入 **instruction memory** 和 **data memory**
+- Instruction memory 使用 `true_dual_port_bram`（RTL 實作），testbench 直接存取 `dut.inst_mem_multicycle_0.imem.ram`
+- 不再依賴 Vivado Block Memory IP 的 COE 初始化，每次測試可以快速切換不同的 ELF
 
 補充：
-- `make xsim-test-quick ELF=...` 會走舊的 `--skip-setup`（等同 `setup-mode=none`），只有在你確定環境已經對應到該測試程式時才適合用。
+- `make xsim-test-quick ELF=...` 使用 `--skip-setup`，跳過 Vivado 設定步驟，適合快速迭代測試
 
 ## 3) Verilator + 自己寫的單元測試 + Spike
 
 ```bash
 make spike-selftests
 ```
+
+# 其他測試指令
+
+```bash
+make check-bram
+```
+
+會嘗試 synthesis 並列出報告看看 `true_dual_port_bram.sv` 是否合成出 BRAM

@@ -141,7 +141,7 @@ module tb_verilator;
         string hexfile;
         if ($value$plusargs("HEX=%s", hexfile)) begin
             $display("[tb_verilator] Loading program from %0s", hexfile);
-            $readmemh(hexfile, dut.inst_mem_multicycle_0.mem);
+            $readmemh(hexfile, dut.inst_mem_multicycle_0.imem.ram);
             // Optional: also preload data memory (OK if code+data share one image)
             $readmemh(hexfile, dut.data_memory_multicycle_0.mem);
 

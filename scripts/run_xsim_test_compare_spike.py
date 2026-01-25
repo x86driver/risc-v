@@ -98,36 +98,20 @@ def elf_info(elf: Path) -> ElfInfo:
     return ElfInfo(entry=entry, tohost=syms["tohost"], begin_sig=begin_sig, end_sig=end_sig, load_addr=load_addr)
 
 
-def elf_to_coe(elf: Path, out_coe: Path) -> Path:
-    """Convert ELF to COE format for Vivado Block Memory Generator. Returns path to HEX file."""
-    out_coe.parent.mkdir(parents=True, exist_ok=True)
-    out_bin = out_coe.with_suffix(".bin")
-    out_hex = out_coe.with_suffix(".hex")
+def elf_to_hex(elf: Path, out_hex: Path) -> Path:
+    """Convert ELF to HEX format for $readmemh. Returns path to HEX file."""
+    out_hex.parent.mkdir(parents=True, exist_ok=True)
+    out_bin = out_hex.with_suffix(".bin")
     
     # Convert ELF to binary
     run_checked([str(OBJCOPY), "-O", "binary", str(elf), str(out_bin)])
     
-    # Read binary and create COE and HEX files
+    # Read binary and create HEX file
     data = out_bin.read_bytes()
     if len(data) % 4:
         data += b"\x00" * (4 - (len(data) % 4))
     
-    # Write COE file
-    with out_coe.open("w", encoding="utf-8") as f:
-        f.write("memory_initialization_radix=16;\n")
-        f.write("memory_initialization_vector=\n")
-        words = []
-        for i in range(0, len(data), 4):
-            w = struct.unpack_from("<I", data, i)[0]
-            words.append(f"{w:08x}")
-        # Join with commas, last one with semicolon
-        for i, w in enumerate(words):
-            if i == len(words) - 1:
-                f.write(f"{w};\n")
-            else:
-                f.write(f"{w},\n")
-    
-    # Write HEX file (for $readmemh in data memory)
+    # Write HEX file (one 32-bit word per line, for $readmemh)
     with out_hex.open("w", encoding="utf-8") as f:
         for i in range(0, len(data), 4):
             w = struct.unpack_from("<I", data, i)[0]
@@ -323,17 +307,11 @@ def main() -> int:
     ap.add_argument("--max-cycles", type=int, default=200000)
     ap.add_argument("--vivado-path", default="/home/shane/tools/Xilinx/2025.2/Vivado",
                     help="Path to Vivado installation")
-    ap.add_argument(
-        "--setup-mode",
-        choices=["full", "coe-only", "none"],
-        default="full",
-        help="Vivado setup mode: full (regen+export), coe-only (regen only), none (assume already set up)",
-    )
-    ap.add_argument(
-        "--skip-setup",
-        action="store_true",
-        help="DEPRECATED: same as --setup-mode none (kept for backward compatibility)",
-    )
+    # Legacy arguments (no longer needed since we use $readmemh instead of COE)
+    ap.add_argument("--setup-mode", choices=["full", "coe-only", "none"], default="none",
+                    help="DEPRECATED: No longer needed. Vivado IP regeneration is not required.")
+    ap.add_argument("--skip-setup", action="store_true",
+                    help="DEPRECATED: No longer needed. Setup is always skipped.")
     args = ap.parse_args()
 
     elf = args.elf.resolve()
@@ -349,46 +327,10 @@ def main() -> int:
     vivado_bin = Path(args.vivado_path) / "bin"
     xsim_script_dir = project_root / "risc-v.sim/sim_1/behav/xsim/xsim"
 
-    # Convert ELF to COE and HEX (use fixed name to avoid git status changes)
-    coe_path = outdir / "bootrom.coe"
-    hex_path = elf_to_coe(elf, coe_path)
-    print(f"[INFO] Generated COE: {coe_path}")
+    # Convert ELF to HEX for $readmemh (testbench loads both imem and dmem)
+    hex_path = outdir / "bootrom.hex"
+    elf_to_hex(elf, hex_path)
     print(f"[INFO] Generated HEX: {hex_path}")
-
-    # Setup Vivado simulation (update COE, regenerate IP, export scripts)
-    setup_mode = args.setup_mode
-    if args.skip_setup:
-        setup_mode = "none"
-
-    if setup_mode == "none":
-        print("[INFO] Skipping Vivado setup (setup-mode=none)")
-    else:
-        if setup_mode == "full":
-            setup_tcl = project_root / "scripts/setup_xsim_test.tcl"
-        else:
-            setup_tcl = project_root / "scripts/update_xsim_coe.tcl"
-
-        print(f"[INFO] Vivado setup: mode={setup_mode} tcl={setup_tcl.name}")
-        setup_cmd = [
-            str(vivado_bin / "vivado"),
-            "-mode", "batch",
-            "-nojournal", "-nolog",
-            "-source", str(setup_tcl),
-            "-tclargs", str(coe_path),
-        ]
-        try:
-            result = subprocess.run(
-                setup_cmd,
-                cwd=str(project_root),
-                check=True,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-            )
-            print(result.stdout)
-        except subprocess.CalledProcessError as e:
-            print(f"[ERROR] Vivado setup failed:\n{e.stdout}", file=sys.stderr)
-            return 2
 
     # Golden (Spike) log
     spike_log = outdir / (elf.name + ".spike.log")
@@ -527,7 +469,7 @@ quit
 
     # Signature compare
     spike_sig = outdir / (elf.name + ".spike.sig")
-    bin_path = coe_path.with_suffix(".bin")
+    bin_path = hex_path.with_suffix(".bin")
     
     if info.begin_sig == info.end_sig:
         spike_sig.write_text("", encoding="utf-8")

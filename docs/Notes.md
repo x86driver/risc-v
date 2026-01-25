@@ -539,3 +539,23 @@ PASS rv32ui-p-xori 26.15s
 real	18m3.077s
 user	46m13.155s
 sys	2m20.890s
+
+
+01/14-25
+==============
+
+如果把 inst, mem 都寫在 unified
+要把 [3:0] web 的行為補上 (目前 data_memory_multicycle 沒有實作)
+
+要確認到底 read latency 是 1 clock cycle 或是 2 clock cycles
+READ_WAIT 狀態補償了 register-to-register 的延遲
+
+bram 實作太複雜了 還要考慮內部有 pipeline 的行為
+實做簡單的 tdp bram
+
+timescale 要統一 verilator 使用 $time 才會正常
+
+目前跑 0x80000000 都是把前面位址截斷 之後要注意
+
+xsim-test 現在不用內建的 bram 所以不用重新產生 coe,
+但是要能夠讀入 bram

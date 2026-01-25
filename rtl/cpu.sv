@@ -94,6 +94,35 @@ module instruction_memory_multicycle(
     logic [31:0] last_address;  // 記錄上次讀取的地址
     logic read_data_valid_reg;  // 寄存器版本
 
+    wire [31:0] douta;
+    true_dual_port_bram imem(
+        .clka(clk),
+        .wea(4'b0000),
+        .addra(14'({address[15:2]})),
+        .dina(32'h0),
+        .douta(douta),
+        .clkb(1'b0)
+    );
+
+`ifdef INST_MEM_DEBUG
+    initial begin
+        integer i;
+        logic [31:0] prev_addr;
+        prev_addr = 32'hFFFFFFFF;
+        i = 0;
+        forever begin
+            @(posedge clk);
+            if (i < 10 && address !== prev_addr) begin
+                $display("[IMEM] T=%0t: address 0x%08X -> 0x%08X, douta=0x%08X", 
+                        $time, prev_addr, address, douta);
+                prev_addr = address;
+                ++i;
+            end
+        end
+    end
+`endif
+
+/*
     // NOTE (simulation robustness):
     // - We index instruction memory with address[15:2] (word index up to 16K entries).
     // - Keep the backing array large enough so $readmemh() doesn't overflow and
@@ -111,6 +140,7 @@ module instruction_memory_multicycle(
         .douta(douta)
     );
 `endif
+*/
 
     // 組合邏輯：當地址變化時，立即無效化 read_data_valid
     assign read_data_valid = read_data_valid_reg && (address == last_address);
@@ -139,7 +169,7 @@ module instruction_memory_multicycle(
                     state <= READ_DATA;
 `else
                     // Vivado: Block RAM 需要一個週期延遲
-                    state <= READ_WAIT;
+                    state <= READ_DATA;
 `endif
                 end
 
@@ -151,7 +181,8 @@ module instruction_memory_multicycle(
 
                 READ_DATA: begin
 `ifdef IVERILOG
-                    read_data <= mem[address[15:2]];
+                    //read_data <= mem[address[15:2]];
+                    read_data <= douta;
 `else
                     read_data <= douta;
 `endif

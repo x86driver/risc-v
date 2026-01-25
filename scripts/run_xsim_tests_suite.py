@@ -9,13 +9,13 @@ Default:
   - excludes:  *.dump
 
 Outputs:
-  - per-test artifacts in --outdir (coe/hex, spike log/sig, xsim log/sig)
+  - per-test artifacts in --outdir (hex, spike log/sig, xsim log/sig)
   - summary.txt with PASS/FAIL list
   - exits 0 if all selected tests PASS, else 1
 
-Performance strategy:
-  - default: setup-mode=full for every test (updates COE + regenerates IP + exports scripts)
-    This is slower but avoids stateful side-effects between tests.
+Memory loading:
+  - Testbench uses $readmemh to load HEX files directly into BRAM
+  - No Vivado IP regeneration needed between tests (fast switching)
 """
 
 from __future__ import annotations
@@ -48,7 +48,6 @@ def run_one(
     spike_max_instructions: int,
     max_cycles: int,
     vivado_path: str,
-    setup_mode: str,
     verbose: bool,
 ) -> TestResult:
     t0 = time.time()
@@ -67,8 +66,6 @@ def run_one(
         str(max_cycles),
         "--vivado-path",
         vivado_path,
-        "--setup-mode",
-        setup_mode,
     ]
 
     runner_out = outdir / f"{elf.name}.runner.txt"
@@ -100,12 +97,6 @@ def main() -> int:
     ap.add_argument("--fail-fast", action="store_true")
     ap.add_argument("--limit", type=int, default=0, help="Only run first N tests (0 = no limit)")
     ap.add_argument("--verbose", action="store_true", help="Print full per-test runner output to stdout")
-    ap.add_argument(
-        "--setup-mode",
-        choices=["full", "coe-only"],
-        default="full",
-        help="How to setup XSim for every test (default: full).",
-    )
     args = ap.parse_args()
 
     tests_dir = args.dir_.resolve()
@@ -133,8 +124,7 @@ def main() -> int:
     failed = 0
 
     for i, elf in enumerate(elfs, start=1):
-        mode = args.setup_mode
-        print(f"[{i}/{len(elfs)}] {elf.name} (setup={mode}) ...", end="", flush=True)
+        print(f"[{i}/{len(elfs)}] {elf.name} ...", end="", flush=True)
         r = run_one(
             elf,
             outdir,
@@ -142,7 +132,6 @@ def main() -> int:
             spike_max_instructions=args.spike_max_instructions,
             max_cycles=args.max_cycles,
             vivado_path=args.vivado_path,
-            setup_mode=mode,
             verbose=args.verbose,
         )
         results.append(r)

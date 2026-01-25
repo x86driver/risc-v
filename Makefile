@@ -62,17 +62,19 @@ test: all
 	make build-hex-all
 	make test-all
 
-.PHONY: uart-hello
-uart-hello: risc-v.srcs/sources_1/ip/blk_mem_gen_0/uart-hello_prog.coe
+.PHONY: bootrom
+bootrom: rtl/bootrom.hex
 
-risc-v.srcs/sources_1/ip/blk_mem_gen_0/uart-hello_prog.coe: program/source/uart-hello.S
+rtl/bootrom.hex: program/source/uart-hello.S
 	/opt/riscv/bin/riscv64-unknown-elf-gcc -march=rv32i -mabi=ilp32 -nostdlib -nostartfiles -Wl,-Ttext=0 -o uart-hello.elf $<
 	/opt/riscv/bin/riscv64-unknown-elf-objcopy -O binary uart-hello.elf uart-hello.bin
-	python3 scripts/to_coe.py uart-hello.bin > $@
+	python3 scripts/to_hex.py uart-hello.bin > $@
+	cp $@ risc-v.sim/sim_1/behav/xsim/
 
 clean:
 	rm -f simv
 	rm -f program/hex/*_prog.hex
+	rm -f rtl/bootrom.hex risc-v.sim/sim_1/behav/xsim/bootrom.hex
 	rm -rf build
 	rm -rf obj_dir
 

@@ -8,7 +8,7 @@
 
 module true_dual_port_bram #(
     parameter ADDR_WIDTH = 14,
-    parameter INIT_FILE  = ""  // Optional: path to hex file for initialization
+    parameter INIT_FILE  = "bootrom.hex"
 )(
     input  logic clka,
     input  logic [3:0] wea,
@@ -47,6 +47,11 @@ module true_dual_port_bram #(
         if (INIT_FILE != "") begin : gen_init
             initial begin
                 $readmemh(INIT_FILE, ram);
+                $display("Read bootrom: %0s", INIT_FILE);
+            end
+        end else begin
+            initial begin
+                $display("NO bootrom available!");
             end
         end
     endgenerate

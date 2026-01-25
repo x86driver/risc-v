@@ -559,3 +559,5 @@ timescale 要統一 verilator 使用 $time 才會正常
 
 xsim-test 現在不用內建的 bram 所以不用重新產生 coe,
 但是要能夠讀入 bram
+
+下一步: 做 unified memory

@@ -84,10 +84,8 @@ module instruction_memory_multicycle(
 
     typedef enum logic [2:0] {
         IDLE           = 3'd0,  // 空閒狀態
-        READ_ADDR      = 3'd1,  // 發送讀地址（Block RAM 接收地址）
-        READ_WAIT      = 3'd2,  // 等待 Block RAM 輸出（Block RAM 需要 1 週期延遲）
-        READ_DATA      = 3'd3,  // 接收讀數據
-        READ_VALID     = 3'd4   // 保持 valid 直到地址變化
+        READ_DATA      = 3'd1,  // 接收讀數據
+        READ_VALID     = 3'd2   // 保持 valid 直到地址變化
     } state_t;
 
     state_t state;  // 當前狀態
@@ -122,26 +120,6 @@ module instruction_memory_multicycle(
     end
 `endif
 
-/*
-    // NOTE (simulation robustness):
-    // - We index instruction memory with address[15:2] (word index up to 16K entries).
-    // - Keep the backing array large enough so $readmemh() doesn't overflow and
-    //   so typical RV32 test images placed at 0x8000_0000.. can execute without
-    //   out-of-bounds array accesses in Verilator/Icarus.
-    localparam INST_COUNT = 16384;
-
-    logic [31:0] mem [INST_COUNT];
-
-`ifndef IVERILOG
-    wire [31:0] douta;
-    blk_mem_gen_0 blk_inst_memory_0 (
-        .clka(clk),
-        .addra(32'({2'b00, address[31:2]})),
-        .douta(douta)
-    );
-`endif
-*/
-
     // 組合邏輯：當地址變化時，立即無效化 read_data_valid
     assign read_data_valid = read_data_valid_reg && (address == last_address);
     assign write_done = 1'b0;  // 這個模組不支持寫入
@@ -157,35 +135,12 @@ module instruction_memory_multicycle(
                 IDLE: begin
                     read_data_valid_reg <= 0;
                     if (init_calib_complete && MemRead) begin
-                        state <= READ_ADDR;
+                        state <= READ_DATA;
                     end
                 end
 
-                READ_ADDR: begin
-                    // 地址已經送到 Block RAM，等待一個週期
-                    read_data_valid_reg <= 0;
-`ifdef IVERILOG
-                    // Icarus: 內存是組合邏輯，可以直接讀取
-                    state <= READ_DATA;
-`else
-                    // Vivado: Block RAM 需要一個週期延遲
-                    state <= READ_DATA;
-`endif
-                end
-
-                READ_WAIT: begin
-                    // 這個狀態只在 Vivado 中使用，等待 Block RAM 輸出
-                    read_data_valid_reg <= 0;
-                    state <= READ_DATA;
-                end
-
                 READ_DATA: begin
-`ifdef IVERILOG
-                    //read_data <= mem[address[15:2]];
                     read_data <= douta;
-`else
-                    read_data <= douta;
-`endif
                     read_data_valid_reg <= 1;
                     last_address <= address;
                     state <= READ_VALID;  // 進入保持狀態
@@ -195,7 +150,7 @@ module instruction_memory_multicycle(
                     // 當地址變化時，重新讀取
                     if (address != last_address) begin
                         read_data_valid_reg <= 0;
-                        state <= READ_ADDR;
+                        state <= IDLE;
                     end
                     // 地址不變時，read_data_valid_reg 保持 1
                 end

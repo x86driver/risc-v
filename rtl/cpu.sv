@@ -69,51 +69,77 @@ module alu(
 
 endmodule
 
-module instruction_memory_multicycle(
+module unified_memory_multicycle(
     input logic clk,
     input logic rst_n,
-    input logic MemRead,
-    input logic MemWrite,
-    input logic [31:0] address,
-    input logic [31:0] write_data,
-    output logic read_data_valid,
-    output logic [31:0] read_data,
-    output logic write_done,
+    input logic imem_MemRead,
+    input logic imem_MemWrite,
+    input logic [31:0] imem_address,
+    input logic [31:0] imem_write_data,
+    output logic imem_read_data_valid,
+    output logic [31:0] imem_read_data,
+    output logic imem_write_done,
+
+    input logic dmem_MemRead,
+    input logic dmem_MemWrite,
+    input logic [2:0] dmem_funct3,
+    input logic [31:0] dmem_address,
+    input logic [31:0] dmem_write_data,
+    output logic dmem_read_data_valid,
+    output logic [31:0] dmem_read_data,
+    output logic dmem_write_done,
+
     input logic init_calib_complete
 );
 
-    typedef enum logic [2:0] {
-        IDLE           = 3'd0,  // 空閒狀態
-        READ_DATA      = 3'd1,  // 接收讀數據
-        READ_VALID     = 3'd2   // 保持 valid 直到地址變化
-    } state_t;
+    typedef enum logic [1:0] {
+        IMEM_IDLE           = 2'd0,  // 空閒狀態
+        IMEM_READ_DATA      = 2'd1,  // 接收讀數據
+        IMEM_READ_VALID     = 2'd2   // 保持 valid 直到地址變化
+    } imem_state_t;
 
-    state_t state;  // 當前狀態
-    logic [31:0] last_address;  // 記錄上次讀取的地址
-    logic read_data_valid_reg;  // 寄存器版本
+    typedef enum logic [1:0] {
+        IDLE           = 2'd0,
+        WRITE_DONE     = 2'd1,
+        READ_DATA      = 2'd2,
+        READ_DONE      = 2'd3
+    } dmem_state_t;
+
+    imem_state_t imem_state;
+    dmem_state_t dmem_state;
+
+    logic [31:0] imem_last_address;  // 記錄上次讀取的地址
+    logic imem_read_data_valid_reg;
+    logic [3:0] dmem_web;
+    logic [31:0] dmem_dinb;
 
     wire [31:0] douta;
-    true_dual_port_bram imem(
+    wire [31:0] doutb;
+    true_dual_port_bram uram(
         .clka(clk),
         .wea(4'b0000),
-        .addra(14'({address[15:2]})),
+        .addra(14'({imem_address[15:2]})),
         .dina(32'h0),
         .douta(douta),
-        .clkb(1'b0)
+        .clkb(clk),
+        .web(dmem_web),
+        .addrb(14'({dmem_address[15:2]})),
+        .dinb(dmem_dinb),
+        .doutb(doutb)
     );
 
 `ifdef INST_MEM_DEBUG
     initial begin
         integer i;
-        logic [31:0] prev_addr;
-        prev_addr = 32'hFFFFFFFF;
+        logic [31:0] imem_prev_addr;
+        imem_prev_addr = 32'hFFFFFFFF;
         i = 0;
         forever begin
             @(posedge clk);
-            if (i < 10 && address !== prev_addr) begin
+            if (i < 10 && imem_address !== imem_prev_addr) begin
                 $display("[IMEM] T=%0t: address 0x%08X -> 0x%08X, douta=0x%08X", 
-                        $time, prev_addr, address, douta);
-                prev_addr = address;
+                        $time, imem_prev_addr, imem_address, douta);
+                imem_prev_addr = imem_address;
                 ++i;
             end
         end
@@ -121,42 +147,144 @@ module instruction_memory_multicycle(
 `endif
 
     // 組合邏輯：當地址變化時，立即無效化 read_data_valid
-    assign read_data_valid = read_data_valid_reg && (address == last_address);
-    assign write_done = 1'b0;  // 這個模組不支持寫入
+    assign imem_read_data_valid = imem_read_data_valid_reg && (imem_address == imem_last_address);
+    assign imem_write_done = 1'b0;  // imem 不支持寫入
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            state <= IDLE;
-            read_data <= 0;
-            read_data_valid_reg <= 0;
-            last_address <= 32'hFFFFFFFF;  // 無效地址
+            imem_state <= IMEM_IDLE;
+            imem_read_data <= 0;
+            imem_read_data_valid_reg <= 0;
+            imem_last_address <= 32'hFFFFFFFF;  // 無效地址
         end else begin
-            case (state)
-                IDLE: begin
-                    read_data_valid_reg <= 0;
-                    if (init_calib_complete && MemRead) begin
-                        state <= READ_DATA;
+            case (imem_state)
+                IMEM_IDLE: begin
+                    imem_read_data_valid_reg <= 0;
+                    if (init_calib_complete && imem_MemRead) begin
+                        imem_state <= IMEM_READ_DATA;
                     end
                 end
 
-                READ_DATA: begin
-                    read_data <= douta;
-                    read_data_valid_reg <= 1;
-                    last_address <= address;
-                    state <= READ_VALID;  // 進入保持狀態
+                IMEM_READ_DATA: begin
+                    imem_read_data <= douta;
+                    imem_read_data_valid_reg <= 1;
+                    imem_last_address <= imem_address;
+                    imem_state <= IMEM_READ_VALID;  // 進入保持狀態
                 end
 
-                READ_VALID: begin
+                IMEM_READ_VALID: begin
                     // 當地址變化時，重新讀取
-                    if (address != last_address) begin
-                        read_data_valid_reg <= 0;
-                        state <= IDLE;
+                    if (imem_address != imem_last_address) begin
+                        imem_read_data_valid_reg <= 0;
+                        imem_state <= IMEM_IDLE;
                     end
                     // 地址不變時，read_data_valid_reg 保持 1
                 end
 
                 default: begin
-                    state <= IDLE;
+                    imem_state <= IMEM_IDLE;
+                end
+            endcase
+        end
+    end
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            dmem_state <= IDLE;
+            dmem_read_data <= 0;
+            dmem_read_data_valid <= 0;
+            dmem_write_done <= 0;
+            dmem_dinb <= 32'h0;
+            dmem_web <= 4'b0000;
+        end else begin
+            case (dmem_state)
+                IDLE: begin
+                    dmem_read_data_valid <= 0;
+                    dmem_write_done <= 0;
+                    dmem_dinb <= 32'h0;
+                    dmem_web <= 4'b0000;
+                    if (init_calib_complete) begin
+                        if (dmem_MemRead) begin
+                            dmem_state <= READ_DATA;
+                        end else if (dmem_MemWrite) begin
+                            if (dmem_funct3 == 3'b000) begin // sb
+                                case (dmem_address[1:0])
+                                    2'b00: begin
+                                        dmem_dinb <= {24'h0, dmem_write_data[7:0]};
+                                        dmem_web <= 4'b0001;
+                                    end
+                                    2'b01: begin
+                                        dmem_dinb <= {16'h0, dmem_write_data[7:0], 8'h0};
+                                        dmem_web <= 4'b0010;
+                                    end
+                                    2'b10: begin
+                                        dmem_dinb <= {8'h0, dmem_write_data[7:0], 16'h0};
+                                        dmem_web <= 4'b0100;
+                                    end
+                                    2'b11: begin
+                                        dmem_dinb <= {dmem_write_data[7:0], 24'h0};
+                                        dmem_web <= 4'b1000;
+                                    end
+                                endcase
+                            end else if (dmem_funct3 == 3'b001) begin // sh
+                                if (dmem_address[1] == 0) begin
+                                    dmem_dinb <= {16'h0, dmem_write_data[15:0]};
+                                    dmem_web <= 4'b0011;
+                                end else if (dmem_address[1] == 1) begin
+                                    dmem_dinb <= {dmem_write_data[15:0], 16'h0};
+                                    dmem_web <= 4'b1100;
+                                end
+                            end else if (dmem_funct3 == 3'b010) begin // sw
+                                dmem_dinb <= dmem_write_data;
+                                dmem_web <= 4'b1111;
+                            end
+
+                            dmem_write_done <= 1;
+                            dmem_state <= WRITE_DONE;
+                        end else begin
+                            dmem_state <= IDLE;
+                        end
+                    end
+                end
+
+                WRITE_DONE: begin
+                    dmem_write_done <= 0;
+                    dmem_state <= IDLE;
+                end
+
+                READ_DATA: begin
+                    // 使用位址位移擷取對應 byte/halfword（小端序）
+                    logic [31:0] word;
+                    logic [7:0]  byte_sel;
+                    logic [15:0] half_sel;
+                    word = doutb;
+                    byte_sel = word[dmem_address[1:0]*8 +: 8];
+                    half_sel = dmem_address[1] ? word[31:16] : word[15:0];
+
+                    if (dmem_funct3 == 3'b000) begin // lb
+                        dmem_read_data <= {{24{byte_sel[7]}}, byte_sel};
+                    end else if (dmem_funct3 == 3'b001) begin // lh
+                        dmem_read_data <= {{16{half_sel[15]}}, half_sel};
+                    end else if (dmem_funct3 == 3'b010) begin // lw
+                        dmem_read_data <= word;
+                    end else if (dmem_funct3 == 3'b100) begin // lbu
+                        dmem_read_data <= {24'b0, byte_sel};
+                    end else if (dmem_funct3 == 3'b101) begin // lhu
+                        dmem_read_data <= {16'b0, half_sel};
+                    end else begin
+                        dmem_read_data <= word;
+                    end
+                    dmem_read_data_valid <= 1;
+                    dmem_state <= READ_DONE;
+                end
+
+                READ_DONE: begin
+                    dmem_read_data_valid <= 0;
+                    dmem_state <= IDLE;
+                end
+
+                default: begin
+                    dmem_state <= IDLE;
                 end
             endcase
         end
@@ -2354,16 +2482,26 @@ module riscv_cpu #(
     wire if_pc_read_data_valid;
     assign if_pc_MemRead = 1'b1;
 
-    instruction_memory_multicycle inst_mem_multicycle_0(
+    unified_memory_multicycle unified_mem_multicycle_0(
         .clk(clk),
         .rst_n(rst_n),
-        .MemRead(1'b1),
-        .MemWrite(1'b0),
-        .address(pc_current),
-        .write_data(),
-        .read_data_valid(if_pc_read_data_valid),
-        .read_data(if_inst),
-        .write_done(),
+        .imem_MemRead(1'b1),
+        .imem_MemWrite(1'b0),
+        .imem_address(pc_current),
+        .imem_write_data(),
+        .imem_read_data_valid(if_pc_read_data_valid),
+        .imem_read_data(if_inst),
+        .imem_write_done(),
+
+        .dmem_MemRead(mem_data_MemRead),
+        .dmem_MemWrite(mem_data_MemWrite),
+        .dmem_funct3(mem_funct3),
+        .dmem_address(mem_alu_out),
+        .dmem_write_data(mem_read_data2),
+        .dmem_read_data_valid(mem_data_read_data_valid),
+        .dmem_read_data(mem_memory_read_data),
+        .dmem_write_done(mem_data_write_done),
+
         .init_calib_complete(1'b1)
     );
 
@@ -2768,20 +2906,6 @@ module riscv_cpu #(
         .sel(address_sel),
         .memRead_en(memRead_en),
         .memWrite_en(memWrite_en)
-    );
-
-    data_memory_multicycle data_memory_multicycle_0(
-        .clk(clk),
-        .rst_n(rst_n),
-        .MemRead(mem_data_MemRead),
-        .MemWrite(mem_data_MemWrite),
-        .funct3(mem_funct3),
-        .address(mem_alu_out),
-        .write_data(mem_read_data2),
-        .read_data_valid(mem_data_read_data_valid),
-        .read_data(mem_memory_read_data),
-        .write_done(mem_data_write_done),
-        .init_calib_complete(1'b1)
     );
 
     assign mem_uart_MemRead = memRead_en && address_sel == SEL_UART;

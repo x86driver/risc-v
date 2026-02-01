@@ -141,9 +141,7 @@ module tb_verilator;
         string hexfile;
         if ($value$plusargs("HEX=%s", hexfile)) begin
             $display("[tb_verilator] Loading program from %0s", hexfile);
-            $readmemh(hexfile, dut.inst_mem_multicycle_0.imem.ram);
-            // Optional: also preload data memory (OK if code+data share one image)
-            $readmemh(hexfile, dut.data_memory_multicycle_0.mem);
+            $readmemh(hexfile, dut.unified_mem_multicycle_0.uram.ram);
 
             // No boot ROM patch needed - CPU starts directly at RESET_PC (0x8000_0000).
         end else begin
@@ -261,7 +259,7 @@ module tb_verilator;
         for (addr = begin_sig; addr < end_sig; addr += 4) begin
             // Our simple RAM indexes by addr[15:2] (64KiB alias window).
             idx = ((addr & 32'h0000_FFFF) >> 2);
-            $fwrite(fd, "%08x\n", dut.data_memory_multicycle_0.mem[idx]);
+            $fwrite(fd, "%08x\n", dut.unified_mem_multicycle_0.uram.ram[idx]);
         end
         $fclose(fd);
         $display("[tb_verilator] Wrote signature: %0s (0x%08x..0x%08x)", sigfile, begin_sig, end_sig);

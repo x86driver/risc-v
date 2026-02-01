@@ -14,13 +14,13 @@
 - [ ]（板上）LED 模擬看起來正確，放到板子上試試
 - [ ] 把 `ddr3_ram.sv` 的 clk 拿掉，直接傳 clk_50 進去
 - [ ] instruction memory 要換成 DDR3
-- [ ] 連續跑一些指令測試，若沒問題就把 instruction memory 結合 data memory
+- [x] 連續跑一些指令測試，若沒問題就把 instruction memory 結合 data memory
 - [ ]（arbiter 相關）if_stall 和 mem_stall 應該同時只能有一個為 1？需要釐清/修正
 - [ ]（arbiter 相關）乾脆不管 if_stall 或 mem_stall 都停掉整個流水線（評估並實作/驗證）
 - [ ]（arbiter 相關）多測試一些指令（確認不會因搶記憶體卡死）
 - [x]（回退策略）可能要回退到「兩塊記憶體」版本，並把測試程式搬進去
 - [ ]（回退策略）只保留 `mux_id_MemRead` 相關，其它先不需要（或直接 copy old-risc-v 那份）
-- [ ] 加回去 `readmemh`
+- [x] unified 加回去 `readmemh`
 - [x] 資料存取要 4-byte 對齊
 - [ ] 目前跑 0x80000000 都是把前面位址截斷
 
@@ -55,7 +55,7 @@
 - [x] `rv32mi-p-lw-misaligned`
 - [ ] verilator 加上 -Wall -Werror-WIDTH
 - [ ] 讓 xsim 也可以跑 `program/source/*_elf.S`
-- [ ] lw/sw 系列的 xsim 都跑不過, 先寫一個簡單的 lw 試試看 (因為目前 imem/dmem 是分開的)
+- [x] lw/sw 系列的 xsim 都跑不過, 先寫一個簡單的 lw 試試看 (因為目前 imem/dmem 是分開的)
 
 ### 已完成
 - [x] ecall `00000073`（rd=0）

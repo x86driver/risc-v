@@ -124,9 +124,7 @@ module tb_xsim;
         if ($value$plusargs("HEX=%s", hexfile)) begin
             $display("[tb_xsim] Loading program from %0s", hexfile);
             // Load instruction memory (true_dual_port_bram)
-            $readmemh(hexfile, dut.inst_mem_multicycle_0.imem.ram);
-            // Load data memory (for loads/stores)
-            $readmemh(hexfile, dut.data_memory_multicycle_0.mem);
+            $readmemh(hexfile, dut.unified_mem_multicycle_0.uram.ram);
         end else begin
             $display("[tb_xsim] WARNING: No +HEX specified, memories uninitialized");
         end
@@ -239,7 +237,7 @@ module tb_xsim;
         for (addr = begin_sig; addr < end_sig; addr += 4) begin
             // Our simple RAM indexes by addr[15:2] (64KiB alias window).
             idx = ((addr & 32'h0000_FFFF) >> 2);
-            $fwrite(fd, "%08x\n", dut.data_memory_multicycle_0.mem[idx]);
+            $fwrite(fd, "%08x\n", dut.unified_mem_multicycle_0.uram.ram[idx]);
         end
         $fclose(fd);
         $display("[tb_xsim] Wrote signature: %0s (0x%08x..0x%08x)", sigfile, begin_sig, end_sig);

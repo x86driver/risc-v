@@ -303,6 +303,12 @@ make xsim-tests DIR=/opt/riscv/target/share/riscv-tests/isa PATTERN='rv32ui-p-*'
 make spike-selftests
 ```
 
+單檔測試
+
+```bash
+make store-spike
+```
+
 # 其他測試指令
 
 ```bash

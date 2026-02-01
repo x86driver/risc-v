@@ -557,7 +557,77 @@ timescale 要統一 verilator 使用 $time 才會正常
 
 目前跑 0x80000000 都是把前面位址截斷 之後要注意
 
-xsim-test 現在不用內建的 bram 所以不用重新產生 coe,
-但是要能夠讀入 bram
+xsim-test 現在不用內建的 bram 所以不用重新產生 coe
 
 下一步: 做 unified memory
+
+02/01
+==============
+
+count=42
+PASS=41
+FAIL=1
+
+PASS rv32ui-p-add 9.03s
+PASS rv32ui-p-addi 6.90s
+PASS rv32ui-p-and 7.10s
+PASS rv32ui-p-andi 6.81s
+PASS rv32ui-p-auipc 7.15s
+PASS rv32ui-p-beq 6.10s
+PASS rv32ui-p-bge 6.94s
+PASS rv32ui-p-bgeu 5.91s
+PASS rv32ui-p-blt 5.99s
+PASS rv32ui-p-bltu 5.82s
+PASS rv32ui-p-bne 5.83s
+PASS rv32ui-p-fence_i 5.99s
+PASS rv32ui-p-jal 6.96s
+PASS rv32ui-p-jalr 7.12s
+PASS rv32ui-p-lb 5.91s
+PASS rv32ui-p-lbu 5.96s
+PASS rv32ui-p-ld_st 6.94s
+PASS rv32ui-p-lh 6.95s
+PASS rv32ui-p-lhu 5.86s
+PASS rv32ui-p-lui 6.12s
+PASS rv32ui-p-lw 6.80s
+FAIL rv32ui-p-ma_data 0.11s
+PASS rv32ui-p-or 6.96s
+PASS rv32ui-p-ori 7.07s
+PASS rv32ui-p-sb 6.07s
+PASS rv32ui-p-sh 6.98s
+PASS rv32ui-p-simple 5.77s
+PASS rv32ui-p-sll 7.41s
+PASS rv32ui-p-slli 6.89s
+PASS rv32ui-p-slt 7.00s
+PASS rv32ui-p-slti 6.16s
+PASS rv32ui-p-sltiu 6.03s
+PASS rv32ui-p-sltu 7.30s
+PASS rv32ui-p-sra 6.08s
+PASS rv32ui-p-srai 6.95s
+PASS rv32ui-p-srl 6.05s
+PASS rv32ui-p-srli 6.98s
+PASS rv32ui-p-st_ld 6.10s
+PASS rv32ui-p-sub 6.88s
+PASS rv32ui-p-sw 6.89s
+PASS rv32ui-p-xor 5.93s
+PASS rv32ui-p-xori 5.91s
+
+count=16
+PASS=6
+FAIL=10
+
+FAIL rv32mi-p-breakpoint 5.86s
+FAIL rv32mi-p-csr 5.84s
+FAIL rv32mi-p-illegal 7.06s
+FAIL rv32mi-p-instret_overflow 5.87s
+PASS rv32mi-p-lh-misaligned 5.89s
+PASS rv32mi-p-lw-misaligned 5.79s
+PASS rv32mi-p-ma_addr 5.80s
+FAIL rv32mi-p-ma_fetch 6.01s
+FAIL rv32mi-p-mcsr 5.83s
+PASS rv32mi-p-pmpaddr 5.82s
+FAIL rv32mi-p-sbreak 5.85s
+FAIL rv32mi-p-scall 7.09s
+PASS rv32mi-p-sh-misaligned 5.88s
+FAIL rv32mi-p-shamt 7.19s
+PASS rv32mi-p-sw-misaligned 5.85s
+FAIL rv32mi-p-zicntr 0.11s

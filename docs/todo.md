@@ -55,7 +55,7 @@
 - [x] `rv32mi-p-lw-misaligned`
 - [ ] verilator 加上 -Wall -Werror-WIDTH
 - [x] 讓 xsim 也可以跑 `program/source/*_elf.S`
-- [ ] xsim 加上測試: 同一週期 imem, dmem 同時讀寫
+- [x] xsim 加上測試: 同一週期 imem, dmem 同時讀寫
 - [x] lw/sw 系列的 xsim 都跑不過, 先寫一個簡單的 lw 試試看 (因為目前 imem/dmem 是分開的)
 
 ### 已完成

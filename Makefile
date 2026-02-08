@@ -84,7 +84,7 @@ FORCE:
 bootrom: rtl/bootrom.hex
 
 rtl/bootrom.hex: program/source/uart-hello.S FORCE
-	/opt/riscv/bin/riscv64-unknown-elf-gcc -march=rv32i -mabi=ilp32 -nostdlib -nostartfiles -Wl,-Ttext=0 -o uart-hello.elf $<
+	/opt/riscv/bin/riscv64-unknown-elf-gcc -march=rv64i_zicsr_zifencei -mabi=lp64 -nostdlib -nostartfiles -Wl,-Ttext=0 -o uart-hello.elf $<
 	/opt/riscv/bin/riscv64-unknown-elf-objcopy -O binary uart-hello.elf uart-hello.bin
 	python3 scripts/to_hex.py uart-hello.bin > $@
 	cp $@ risc-v.sim/sim_1/behav/xsim/

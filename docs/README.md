@@ -318,3 +318,13 @@ make check-bram
 ```
 
 會嘗試 synthesis 並列出報告看看 `true_dual_port_bram.sv` 是否合成出 BRAM
+
+# 實際燒到 FPGA
+
+請先做:
+
+```bash
+make bootrom
+```
+
+然後直接在 Vivado 執行 Synthesis -> Implementation -> Generate Bitstream

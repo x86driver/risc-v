@@ -12,9 +12,8 @@ _start:
     # pcwrite-3: PCWrite/flush/stall 交錯 corner-case 測試
     # 通用設定
     addi x31, x0, 0             # pass counter
-    # Spike unified memory：避免 data store 覆寫 .text（自修改）
-    lui  x10, 0x80003
-    addi x10, x10, 0             # base = 0x8000_3000
+    # RV64: 使用 li 正確加載 0x80003000，避免 lui sign-extension 問題
+    li   x10, 0x80003000         # base = 0x0000_0000_8000_3000
     addi x12, x0, 1              # data = 1
     sw   x12, 0(x10)             # [base+0] = 1
 
@@ -51,10 +50,12 @@ C3_tgt:
 
     # ------------------------------------------------------------
     # Case 4: sw + jalr (rd!=0)
+    # RV64: 使用 auipc + %pcrel_lo 取代 lui %hi / addi %lo
     # ------------------------------------------------------------
     sw   x12, 4(x10)
-    lui  x8, %hi(C4_tgt)
-    addi x8, x8, %lo(C4_tgt)
+.Lpc4:
+    auipc x8, %pcrel_hi(C4_tgt)
+    addi x8, x8, %pcrel_lo(.Lpc4)
     jalr x9, x8, 0               # write link to x9
     addi x3, x0, -4
 C4_tgt:
@@ -62,12 +63,17 @@ C4_tgt:
     addi x31, x31, 1             # PASS4
 
     # ------------------------------------------------------------
-    # Case 5: sw(label) -> lw -> jalr x0
+    # Case 5: sw(offset) -> lw -> add -> jalr x0
+    # RV64: 存入小偏移量避免 lw sign-extension 問題
+    #   hazard chain: sw → lw → add → jalr
+    #   C5_tgt - .Lpc5 = 16 bytes (add + jalr + addi_wrong + C5_tgt)
     # ------------------------------------------------------------
-    lui  x11, %hi(C5_tgt)
-    addi x11, x11, %lo(C5_tgt)
+    addi x11, x0, 16
     sw   x11, 8(x10)
-    lw   x13, 8(x10)
+    lw   x13, 8(x10)             # sw→lw forwarding + lw-use hazard
+.Lpc5:
+    auipc x14, 0
+    add  x13, x14, x13           # x13 = base + offset = C5_tgt
     jalr x0, x13, 0
     addi x3, x0, -5
 C5_tgt:

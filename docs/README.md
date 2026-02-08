@@ -301,12 +301,14 @@ make xsim-tests DIR=/opt/riscv/target/share/riscv-tests/isa PATTERN='rv32ui-p-*'
 
 ```bash
 make spike-selftests
+make xsim-selftests
 ```
 
 單檔測試
 
 ```bash
 make store-spike
+make store-xsim
 ```
 
 # 其他測試指令

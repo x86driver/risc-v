@@ -42,17 +42,33 @@ build/asm-elf/%.dump: build/asm-elf/%.elf
 %-spike: %-elf
 	$(MAKE) riscv-test ELF=build/asm-elf/$*.elf
 
+%-xsim: %-elf
+	$(MAKE) xsim-test ELF=build/asm-elf/$*.elf
+
 # Auto-discover all *_elf.S tests
-SPIKE_SELFTESTS_SRCS := $(wildcard program/source/*_elf.S)
-SPIKE_SELFTESTS := $(patsubst program/source/%_elf.S, %-elf, $(SPIKE_SELFTESTS_SRCS))
+ASM_ELF_SRCS := $(wildcard program/source/*_elf.S)
+ASM_ELF_TARGETS := $(patsubst program/source/%_elf.S, %-elf, $(ASM_ELF_SRCS))
 
 .PHONY: spike-selftests
-spike-selftests: verilator $(SPIKE_SELFTESTS)
+spike-selftests: verilator $(ASM_ELF_TARGETS)
 	python3 scripts/run_riscv_tests_suite.py \
 	  --dir "$(PWD)/build/asm-elf" \
 	  --pattern "*.elf" \
 	  --outdir "$(PWD)/build/spike-selftests" \
 	  --isa "rv64i" \
+	  --spike-max-instructions "$${SPIKE_MAX_INSN:-200000}" \
+	  --max-cycles "$${MAX_CYCLES:-200000}" \
+	  $$( [ "$${FAIL_FAST:-0}" = "1" ] && echo --fail-fast ) \
+	  $$( [ -n "$${LIMIT:-}" ] && echo --limit "$${LIMIT}" )
+
+.PHONY: xsim-selftests
+xsim-selftests: $(ASM_ELF_TARGETS)
+	python3 scripts/run_xsim_tests_suite.py \
+	  --dir "$(PWD)/build/asm-elf" \
+	  --pattern "*.elf" \
+	  --outdir "$(PWD)/build/xsim-selftests" \
+	  --isa "rv64i" \
+	  --vivado-path "$(VIVADO_PATH)" \
 	  --spike-max-instructions "$${SPIKE_MAX_INSN:-200000}" \
 	  --max-cycles "$${MAX_CYCLES:-200000}" \
 	  $$( [ "$${FAIL_FAST:-0}" = "1" ] && echo --fail-fast ) \

@@ -10,8 +10,7 @@
 
 _start:
     # base = 0x8000_0100
-    lui  x1, 0x80000
-    addi x1, x1, 256
+    li   x1, 0x80000100
 
     # prepare byte values: 0x11, 0x22, 0x80, 0xFF
     addi x2, x0, 17

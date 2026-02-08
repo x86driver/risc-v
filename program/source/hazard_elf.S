@@ -18,7 +18,7 @@ _NEXT:
     add    x5, x4, x3    // x5 = 0x19
 
     // Make the load address valid in Spike default memory map (RAM@0x8000_0000)
-    lui    x6, 0x80000   // x6 = 0x8000_0000
+    li    x6, 0x80000000 // x6 = 0x8000_0000
     lw     x7, 4(x6)     // x7 = *(0x8000_0004)
     add    x8, x6, x7    // x8 = x6 + x7 (load-use hazard)
 

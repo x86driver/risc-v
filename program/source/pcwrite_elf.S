@@ -14,8 +14,8 @@ _start:
     # 注意：Spike 是 unified memory；若把 base 放在 0x8000_0100 之類太靠近 .text 的位置，
     # 可能會覆寫後面的指令造成自修改/illegal instruction。
     # 這裡把 scratch data 區移到更遠的位址，避免覆寫 .text。
-    lui  x10, 0x80003
-    addi x10, x10, 0           # base = 0x8000_3000
+    # RV64: 使用 li 正確加載 0x80003000，避免 lui sign-extension 問題
+    li   x10, 0x80003000        # base = 0x0000_0000_8000_3000
     addi x12, x0, 85           # data = 0x55
 
     # Case 1: data-mem write；緊接著分支（beq taken）
@@ -70,9 +70,11 @@ Lw1:
     addi x6, x0, 6              # 期望提交：x6 = 6
 
     # Case 7: sw 與 jalr x0 同期（在 EX/MEM 交疊）
+    # RV64: 使用 auipc + %pcrel_lo 取代 lui %hi / addi %lo
     sw   x12, 8(x10)
-    lui  x5, %hi(after_jalr1)
-    addi x5, x5, %lo(after_jalr1)
+.Lpc7:
+    auipc x5, %pcrel_hi(after_jalr1)
+    addi x5, x5, %pcrel_lo(.Lpc7)
     jalr x0, x5, 0
     addi x3, x0, -1
 after_jalr1:

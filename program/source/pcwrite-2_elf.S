@@ -11,17 +11,21 @@
 _start:
     # 高壓力控制/停等交錯測試（pcwrite-2）
     # 通用設定
-    # Spike unified memory：避免 data store 覆寫 .text（自修改）
-    lui  x10, 0x80003
-    addi x10, x10, 0            # base = 0x8000_3000（資料區）
+    # RV64: 使用 li 正確加載 0x80003000，避免 lui sign-extension 問題
+    li   x10, 0x80003000         # base = 0x0000_0000_8000_3000（資料區）
 
     # -------------------------------
-    # Case A: lw -> addi -> jalr x0 目標位址源自記憶體（需 hazard/前遞）
+    # Case A: lw -> add -> jalr x0 目標位址源自記憶體（需 hazard/前遞）
+    # RV64: 存入小偏移量（不受 lw sign-extension 影響），再與 auipc 基址相加
+    #   hazard chain: lw x5 → add x5,x8,x5 → jalr x0,x5,0
+    #   T1 - .Lpc_a = 16 bytes (手動計算：add + jalr + addi_wrong + T1)
     # -------------------------------
-    lui  x6, %hi(T1)
-    sw   x6, 0(x10)             # 先寫入目標位址的 hi 20 bits
-    lw   x5, 0(x10)             # 取出 hi，與 addi %lo 組合成完整目標
-    addi x5, x5, %lo(T1)
+    addi x6, x0, 16             # 偏移量 = T1 - .Lpc_a = 16
+    sw   x6, 0(x10)             # 存入偏移量
+    lw   x5, 0(x10)             # 取出偏移量（lw-use hazard, 小正數不受 sign-ext 影響）
+.Lpc_a:
+    auipc x8, 0                 # x8 = base address (PC of auipc)
+    add  x5, x8, x5             # x5 = base + offset = T1（add 使用 lw 結果→hazard）
     jalr x0, x5, 0              # 以記憶體值做為跳轉目標
     addi x3, x0, -1             # 錯路徑（不應提交）
 T1:

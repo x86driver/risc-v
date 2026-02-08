@@ -199,6 +199,13 @@ def spike_trimmed_log(
                 if idx + 1 < len(tokens) and tokens[idx + 1].startswith("0x"):
                     tokens = tokens[: idx + 1]
 
+            # Strip tcontrol CSR (Sdtrig extension) — DUT doesn't implement it,
+            # but Spike logs it on mret by default.
+            if "c1957_tcontrol" in tokens:
+                idx = tokens.index("c1957_tcontrol")
+                end = idx + 2 if (idx + 1 < len(tokens) and tokens[idx + 1].startswith("0x")) else idx + 1
+                tokens = tokens[:idx] + tokens[end:]
+
             out_line = _format_log_spike_style(tokens)
             trimmed_lines.append(out_line)
 
@@ -302,7 +309,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--elf", required=True, type=Path, help="Path to riscv-tests ELF")
     ap.add_argument("--outdir", default=Path("build/xsim-tests"), type=Path)
-    ap.add_argument("--isa", default="rv32i", help="Spike ISA string (default: rv32i)")
+    ap.add_argument("--isa", default="rv64i", help="Spike ISA string (default: rv64i)")
     ap.add_argument("--spike-max-instructions", type=int, default=200000)
     ap.add_argument("--max-cycles", type=int, default=200000)
     ap.add_argument("--vivado-path", default="/home/shane/tools/Xilinx/2025.2/Vivado",

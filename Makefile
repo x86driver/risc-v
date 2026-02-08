@@ -27,7 +27,7 @@ program/hex/%_prog.hex: program/source/%.S scripts/asm_to_hex.py
 build/asm-elf/%.elf: program/source/%_elf.S
 	@mkdir -p build/asm-elf
 	/opt/riscv/bin/riscv64-unknown-elf-gcc \
-	  -march=rv32i_zicsr_zifencei -mabi=ilp32 \
+	  -march=rv64i_zicsr_zifencei -mabi=lp64 \
 	  -nostdlib -nostartfiles \
 	  -Wl,--no-relax -Wl,-e,_start -Wl,-Tprogram/riscv_test.ld \
 	  -o $@ $<
@@ -52,7 +52,7 @@ spike-selftests: verilator $(SPIKE_SELFTESTS)
 	  --dir "$(PWD)/build/asm-elf" \
 	  --pattern "*.elf" \
 	  --outdir "$(PWD)/build/spike-selftests" \
-	  --isa "rv32i" \
+	  --isa "rv64i" \
 	  --spike-max-instructions "$${SPIKE_MAX_INSN:-200000}" \
 	  --max-cycles "$${MAX_CYCLES:-200000}" \
 	  $$( [ "$${FAIL_FAST:-0}" = "1" ] && echo --fail-fast ) \
@@ -112,7 +112,7 @@ riscv-tests: verilator
 	  --dir "$${DIR:-/opt/riscv/target/share/riscv-tests/isa}" \
 	  --pattern "$${PATTERN:-rv32ui-p-*}" \
 	  --outdir "$(PWD)/build/riscv-tests" \
-	  --isa "$${ISA:-rv32i}" \
+	  --isa "$${ISA:-rv64i}" \
 	  --spike-max-instructions "$${SPIKE_MAX_INSN:-200000}" \
 	  --max-cycles "$${MAX_CYCLES:-200000}" \
 	  $$( [ "$${FAIL_FAST:-0}" = "1" ] && echo --fail-fast ) \
@@ -255,7 +255,7 @@ xsim-test:
 	  python3 scripts/run_xsim_test_compare_spike.py \
 	    --elf "$$elf_path" \
 	    --outdir "$(PWD)/build/xsim-tests" \
-	    --isa "$${ISA:-rv32i}" \
+	    --isa "$${ISA:-rv64i}" \
 	    --vivado-path "$(VIVADO_PATH)" \
 	    --spike-max-instructions "$${SPIKE_MAX_INSN:-200000}" \
 	    --max-cycles "$${MAX_CYCLES:-200000}"; \
@@ -273,7 +273,7 @@ xsim-tests:
 	  --dir "$${DIR:-/opt/riscv/target/share/riscv-tests/isa}" \
 	  --pattern "$${PATTERN:-rv32ui-p-*}" \
 	  --outdir "$(PWD)/build/xsim-tests" \
-	  --isa "$${ISA:-rv32i}" \
+	  --isa "$${ISA:-rv64i}" \
 	  --vivado-path "$(VIVADO_PATH)" \
 	  --spike-max-instructions "$${SPIKE_MAX_INSN:-200000}" \
 	  --max-cycles "$${MAX_CYCLES:-200000}" \

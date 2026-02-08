@@ -53,7 +53,7 @@ module tb_verilator;
 
     // Start directly at program entry (default: 0x8000_0000 for riscv-tests)
     // Override at compile time with -GRESET_PC=... if needed.
-    riscv_cpu #(.RESET_PC(32'h8000_0000)) dut (
+    riscv_cpu #(.RESET_PC(64'h0000_0000_8000_0000)) dut (
         .clk(clk),
         .btn_reset_n(btn_reset_n),
 
@@ -159,7 +159,6 @@ module tb_verilator;
     function string csr_name(input int csr);
         case (csr[11:0])
             12'h300: csr_name = "mstatus";
-            12'h310: csr_name = "mstatush";
             12'h302: csr_name = "medeleg";
             12'h303: csr_name = "mideleg";
             12'h304: csr_name = "mie";
@@ -180,10 +179,9 @@ module tb_verilator;
     // Return the *architectural* CSR value after the instruction commits.
     // NOTE: 我們在 negedge 寫 log，而 CSR 暫存器是在 posedge 才更新；
     //       因此要印「commit 後的最終值」應該讀 csr_file 的 *_n（next-state）。
-    function automatic logic [31:0] csr_final_value(input int csr);
+    function automatic logic [63:0] csr_final_value(input int csr);
         unique case (csr[11:0])
             12'h300: csr_final_value = dut.csr_file_0.mstatus_n;
-            12'h310: csr_final_value = dut.csr_file_0.mstatush_n;
             12'h302: csr_final_value = dut.csr_file_0.medeleg_n;
             12'h303: csr_final_value = dut.csr_file_0.mideleg_n;
             12'h304: csr_final_value = dut.csr_file_0.mie_n;
@@ -215,19 +213,19 @@ module tb_verilator;
     // ----------------------------
     // tohost / signature controls
     // ----------------------------
-    logic [31:0] tohost_addr;
-    logic [31:0] begin_sig;
-    logic [31:0] end_sig;
+    logic [63:0] tohost_addr;
+    logic [63:0] begin_sig;
+    logic [63:0] end_sig;
     string       sigfile;
     logic        done;
-    logic [31:0] tohost_val;
+    logic [63:0] tohost_val;
 
     initial begin
-        tohost_addr = 32'h8000_1000;
+        tohost_addr = 64'h0000_0000_8000_1000;
         void'($value$plusargs("TOHOST=%h", tohost_addr));
 
-        begin_sig = 32'h0;
-        end_sig   = 32'h0;
+        begin_sig = 64'h0;
+        end_sig   = 64'h0;
         void'($value$plusargs("BEGIN_SIG=%h", begin_sig));
         void'($value$plusargs("END_SIG=%h", end_sig));
 
@@ -236,12 +234,12 @@ module tb_verilator;
         end
 
         done = 1'b0;
-        tohost_val = 32'h0;
+        tohost_val = 64'h0;
     end
 
     task automatic dump_signature();
         integer fd;
-        logic [31:0] addr;
+        logic [63:0] addr;
         int unsigned idx;
         if (begin_sig >= end_sig) begin
             // No signature region for this test: still create an empty file for tooling.
@@ -258,11 +256,11 @@ module tb_verilator;
         end
         for (addr = begin_sig; addr < end_sig; addr += 4) begin
             // Our simple RAM indexes by addr[15:2] (64KiB alias window).
-            idx = ((addr & 32'h0000_FFFF) >> 2);
+            idx = ((addr & 64'h0000_FFFF) >> 2);
             $fwrite(fd, "%08x\n", dut.unified_mem_multicycle_0.uram.ram[idx]);
         end
         $fclose(fd);
-        $display("[tb_verilator] Wrote signature: %0s (0x%08x..0x%08x)", sigfile, begin_sig, end_sig);
+        $display("[tb_verilator] Wrote signature: %0s (0x%016x..0x%016x)", sigfile, begin_sig, end_sig);
     endtask
 
     // Stop after N cycles to avoid infinite loops in early bring-up.
@@ -286,11 +284,11 @@ module tb_verilator;
     // Emit one line per retired instruction, Spike-like format.
     // Sample at negedge to observe post-NBA updated pipeline registers.
     logic        last_valid;
-    logic [31:0] last_pc;
+    logic [63:0] last_pc;
     logic [31:0] last_inst;
     initial begin
         last_valid = 1'b0;
-        last_pc    = 32'h0;
+        last_pc    = 64'h0;
         last_inst  = 32'h0;
     end
 
@@ -312,13 +310,12 @@ module tb_verilator;
             opcode  = dut.wb_inst[6:0];
 
             // Prefix: PC + INST (Spike-like)
-            $fwrite(log_fd, "0x%08x (0x%08x) ", dut.wb_pc, dut.wb_inst);
+            $fwrite(log_fd, "0x%016x (0x%08x) ", dut.wb_pc, dut.wb_inst);
 
             // Special: mret has implicit mstatus side-effects in Spike logs
             if (dut.wb_inst == 32'h3020_0073) begin
                 // Match the (slightly trimmed) format in log-spike.txt:
-                // "c768_mstatus <val> c784_mstatush"
-                $fwrite(log_fd, "c768_mstatus 0x%08x c784_mstatush\n", dut.csr_file_0.mstatus);
+                $fwrite(log_fd, "c768_mstatus 0x%016x \n", dut.csr_file_0.mstatus);
                 printed = 1'b1;
             end else if (opcode == 7'b0100011) begin
                 // Store: "mem <addr> <data>"
@@ -328,18 +325,18 @@ module tb_verilator;
                 // - sw: 0x00000000 .. 0xffffffff (8-hex-digit zero-padded)
                 unique case (dut.wb_inst[14:12])
                     // IMPORTANT: pass an 8/16-bit value so %x prints the same width as Spike
-                    3'b000: $fwrite(log_fd, "mem 0x%08x 0x%x\n", dut.wb_alu_out, dut.wb_store_data[7:0]);   // sb
-                    3'b001: $fwrite(log_fd, "mem 0x%08x 0x%x\n", dut.wb_alu_out, dut.wb_store_data[15:0]);  // sh
-                    default: $fwrite(log_fd, "mem 0x%08x 0x%08x\n", dut.wb_alu_out, dut.wb_store_data);      // sw
+                    3'b000: $fwrite(log_fd, "mem 0x%016x 0x%x\n", dut.wb_alu_out, dut.wb_store_data[7:0]);   // sb
+                    3'b001: $fwrite(log_fd, "mem 0x%016x 0x%x\n", dut.wb_alu_out, dut.wb_store_data[15:0]);  // sh
+                    default: $fwrite(log_fd, "mem 0x%016x 0x%08x\n", dut.wb_alu_out, dut.wb_store_data[31:0]); // sw
                 endcase
                 printed = 1'b1;
 
                 // Stop condition: first non-zero write to tohost[0] means PASS/FAIL.
-                if ((dut.wb_alu_out == tohost_addr) && (dut.wb_store_data != 32'h0)) begin
+                if ((dut.wb_alu_out == tohost_addr) && (dut.wb_store_data != 0)) begin
                     tohost_val <= dut.wb_store_data;
                     done <= 1'b1;
-                    $display("[tb_verilator] tohost write: addr=%08x data=%08x", tohost_addr, dut.wb_store_data);
-                    $display("[tb_verilator] signature cfg: SIG=%0s BEGIN_SIG=%08x END_SIG=%08x", sigfile, begin_sig, end_sig);
+                    $display("[tb_verilator] tohost write: addr=%016x data=%016x", tohost_addr, dut.wb_store_data);
+                    $display("[tb_verilator] signature cfg: SIG=%0s BEGIN_SIG=%016x END_SIG=%016x", sigfile, begin_sig, end_sig);
                     dump_signature();
                     $finish;
                 end
@@ -351,10 +348,10 @@ module tb_verilator;
                 if (dut.wb_RegWrite && (dut.wb_rd != 0)) begin
                     if (opcode == 7'b0000011) begin
                         // Load: ends with "mem" and NO trailing space
-                        $fwrite(log_fd, "x%0d 0x%08x mem", dut.wb_rd, dut.wb_mux_write_data);
+                        $fwrite(log_fd, "x%0d 0x%016x mem", dut.wb_rd, dut.wb_mux_write_data);
                         printed = 1'b1;
                     end else begin
-                        $fwrite(log_fd, "x%0d 0x%08x", dut.wb_rd, dut.wb_mux_write_data);
+                        $fwrite(log_fd, "x%0d 0x%016x", dut.wb_rd, dut.wb_mux_write_data);
                         printed = 1'b1;
                         need_trailing_space = 1'b1;
                     end
@@ -372,7 +369,7 @@ module tb_verilator;
                 if (dut.wb_CsrWrite) begin
                     csr_dec = dut.wb_CsrWriteImm12;
                     if (printed) $fwrite(log_fd, " ");
-                    $fwrite(log_fd, "c%0d_%s 0x%08x", csr_dec, csr_name(csr_dec), csr_final_value(csr_dec));
+                    $fwrite(log_fd, "c%0d_%s 0x%016x", csr_dec, csr_name(csr_dec), csr_final_value(csr_dec));
                     printed = 1'b1;
                     need_trailing_space = 1'b1;
                 end

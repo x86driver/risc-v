@@ -43,9 +43,9 @@ endmodule
 
 module alu(
     input logic [3:0] alu_ctrl,
-    input logic [31:0] A,
-    input logic [31:0] B,
-    output logic [31:0] alu_out,
+    input logic [63:0] A,
+    input logic [63:0] B,
+    output logic [63:0] alu_out,
     output logic zero
 );
 
@@ -56,11 +56,11 @@ module alu(
             0: alu_out = A & B;
             1: alu_out = A | B;
             2: alu_out = A + B;
-            3: alu_out = $signed(A) >>> B[4:0];
+            3: alu_out = $signed(A) >>> B[5:0];
             4: alu_out = A ^ B;
-            5: alu_out = A << B[4:0];
+            5: alu_out = A << B[5:0];
             6: alu_out = A - B;
-            7: alu_out = A >> B[4:0];
+            7: alu_out = A >> B[5:0];
             8: alu_out = ($signed(A) < $signed(B)) ? 1 : 0;
             9: alu_out = ($unsigned(A) < $unsigned(B)) ? 1 : 0;
             default: alu_out = 0;
@@ -74,7 +74,7 @@ module unified_memory_multicycle(
     input logic rst_n,
     input logic imem_MemRead,
     input logic imem_MemWrite,
-    input logic [31:0] imem_address,
+    input logic [63:0] imem_address,
     input logic [31:0] imem_write_data,
     output logic imem_read_data_valid,
     output logic [31:0] imem_read_data,
@@ -83,10 +83,10 @@ module unified_memory_multicycle(
     input logic dmem_MemRead,
     input logic dmem_MemWrite,
     input logic [2:0] dmem_funct3,
-    input logic [31:0] dmem_address,
-    input logic [31:0] dmem_write_data,
+    input logic [63:0] dmem_address,
+    input logic [63:0] dmem_write_data,
     output logic dmem_read_data_valid,
-    output logic [31:0] dmem_read_data,
+    output logic [63:0] dmem_read_data,
     output logic dmem_write_done,
 
     input logic init_calib_complete
@@ -108,7 +108,7 @@ module unified_memory_multicycle(
     imem_state_t imem_state;
     dmem_state_t dmem_state;
 
-    logic [31:0] imem_last_address;  // 記錄上次讀取的地址
+    logic [63:0] imem_last_address;  // 記錄上次讀取的地址
     logic imem_read_data_valid_reg;
     logic [3:0] dmem_web;
     logic [31:0] dmem_dinb;
@@ -131,8 +131,8 @@ module unified_memory_multicycle(
 `ifdef INST_MEM_DEBUG
     initial begin
         integer i;
-        logic [31:0] imem_prev_addr;
-        imem_prev_addr = 32'hFFFFFFFF;
+        logic [63:0] imem_prev_addr;
+        imem_prev_addr = 64'hFFFFFFFF_FFFFFFFF;
         i = 0;
         forever begin
             @(posedge clk);
@@ -155,7 +155,7 @@ module unified_memory_multicycle(
             imem_state <= IMEM_IDLE;
             imem_read_data <= 0;
             imem_read_data_valid_reg <= 0;
-            imem_last_address <= 32'hFFFFFFFF;  // 無效地址
+            imem_last_address <= 64'hFFFFFFFF_FFFFFFFF;  // 無效地址
         end else begin
             case (imem_state)
                 IMEM_IDLE: begin
@@ -262,17 +262,17 @@ module unified_memory_multicycle(
                     half_sel = dmem_address[1] ? word[31:16] : word[15:0];
 
                     if (dmem_funct3 == 3'b000) begin // lb
-                        dmem_read_data <= {{24{byte_sel[7]}}, byte_sel};
+                        dmem_read_data <= {{56{byte_sel[7]}}, byte_sel};
                     end else if (dmem_funct3 == 3'b001) begin // lh
-                        dmem_read_data <= {{16{half_sel[15]}}, half_sel};
+                        dmem_read_data <= {{48{half_sel[15]}}, half_sel};
                     end else if (dmem_funct3 == 3'b010) begin // lw
-                        dmem_read_data <= word;
+                        dmem_read_data <= {{32{word[31]}}, word};
                     end else if (dmem_funct3 == 3'b100) begin // lbu
-                        dmem_read_data <= {24'b0, byte_sel};
+                        dmem_read_data <= {56'b0, byte_sel};
                     end else if (dmem_funct3 == 3'b101) begin // lhu
-                        dmem_read_data <= {16'b0, half_sel};
+                        dmem_read_data <= {48'b0, half_sel};
                     end else begin
-                        dmem_read_data <= word;
+                        dmem_read_data <= {{32{word[31]}}, word};
                     end
                     dmem_read_data_valid <= 1;
                     dmem_state <= READ_DONE;
@@ -298,10 +298,10 @@ module data_memory_multicycle(
     input logic MemRead,
     input logic MemWrite,
     input logic [2:0] funct3,
-    input logic [31:0] address,
-    input logic [31:0] write_data,
+    input logic [63:0] address,
+    input logic [63:0] write_data,
     output logic read_data_valid,
-    output logic [31:0] read_data,
+    output logic [63:0] read_data,
     output logic write_done,
     input logic init_calib_complete
 );
@@ -404,17 +404,17 @@ module data_memory_multicycle(
                     half_sel = address[1] ? word[31:16] : word[15:0];
 
                     if (funct3 == 3'b000) begin // lb
-                        read_data <= {{24{byte_sel[7]}}, byte_sel};
+                        read_data <= {{56{byte_sel[7]}}, byte_sel};
                     end else if (funct3 == 3'b001) begin // lh
-                        read_data <= {{16{half_sel[15]}}, half_sel};
+                        read_data <= {{48{half_sel[15]}}, half_sel};
                     end else if (funct3 == 3'b010) begin // lw
-                        read_data <= word;
+                        read_data <= {{32{word[31]}}, word};
                     end else if (funct3 == 3'b100) begin // lbu
-                        read_data <= {24'b0, byte_sel};
+                        read_data <= {56'b0, byte_sel};
                     end else if (funct3 == 3'b101) begin // lhu
-                        read_data <= {16'b0, half_sel};
+                        read_data <= {48'b0, half_sel};
                     end else begin
-                        read_data <= word;
+                        read_data <= {{32{word[31]}}, word};
                     end
                     read_data_valid <= 1;
                     state <= READ_DONE;
@@ -435,7 +435,7 @@ module data_memory_multicycle(
 endmodule
 
 module address_decoder(
-    input logic [31:0] address,
+    input logic [63:0] address,
     input logic mem_MemRead,
     input logic mem_MemWrite,
     output logic [1:0] sel,
@@ -466,17 +466,17 @@ module register_file(
     input logic [4:0] read_reg2,
     input logic [4:0] write_reg,
     input logic RegWrite,
-    input logic [31:0] write_data,
-    output logic [31:0] read_data1,
-    output logic [31:0] read_data2
+    input logic [63:0] write_data,
+    output logic [63:0] read_data1,
+    output logic [63:0] read_data2
 );
 
-    logic [31:0] registers [0:31];
+    logic [63:0] registers [0:31];
     
     // 初始化寄存器（用於仿真）
     initial begin
         for (int i = 0; i < 32; i++) begin
-            registers[i] = 32'h0;
+            registers[i] = 64'h0;
         end
     end
     
@@ -484,19 +484,19 @@ module register_file(
         if ((read_reg1 == write_reg) && RegWrite && (write_reg != 5'b0)) begin
             read_data1 = write_data;
         end else begin
-            read_data1 = (read_reg1 == 5'b0) ? 32'h0 : registers[read_reg1];
+            read_data1 = (read_reg1 == 5'b0) ? 64'h0 : registers[read_reg1];
         end
         if ((read_reg2 == write_reg) && RegWrite && (write_reg != 5'b0)) begin
             read_data2 = write_data;
         end else begin
-            read_data2 = (read_reg2 == 5'b0) ? 32'h0 : registers[read_reg2];
+            read_data2 = (read_reg2 == 5'b0) ? 64'h0 : registers[read_reg2];
         end
     end
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             for (int i = 0; i < 32; i++) begin
-                registers[i] <= 32'h0;
+                registers[i] <= 64'h0;
             end
         end else if (RegWrite && (write_reg != 5'b0)) begin
             registers[write_reg] <= write_data;
@@ -506,76 +506,81 @@ module register_file(
 endmodule
 
 typedef struct packed {
-    logic        SD;        // [31]    Dirty summary
-    logic [7:0]  _reserved1;// [30:23] Reserved (WPRI)
-    logic        TSR;       // [22]    Trap SRET
-    logic        TW;        // [21]    Timeout Wait
-    logic        TVM;       // [20]    Trap Virtual Memory
-    logic        MXR;       // [19]    Make eXecutable Readable
-    logic        SUM;       // [18]    permit Supervisor User Memory access
-    logic        MPRV;      // [17]    Modify PRiVilege
-    logic [1:0]  XS;        // [16:15] user eXtension Status
-    logic [1:0]  FS;        // [14:13] Floating-point Status
-    logic [1:0]  MPP;       // [12:11] Machine Previous Privilege
-    logic [1:0]  _reserved0;// [10:9]  Reserved (WPRI)
-    logic        SPP;       // [8]     Supervisor Previous Privilege
-    logic        MPIE;      // [7]     Machine Previous Interrupt Enable
-    logic        UBE;       // [6]     User Big Endian (RV32 only)
-    logic        SPIE;      // [5]     Supervisor Previous Interrupt Enable
-    logic        _reserved2;// [4]     Reserved
-    logic        MIE;       // [3]     Machine Interrupt Enable
-    logic        _reserved3;// [2]     Reserved
-    logic        SIE;       // [1]     Supervisor Interrupt Enable
-    logic        _reserved4;// [0]     Reserved
+    // ---- Upper 32 bits (RV64 only) ----
+    logic        SD;         // [63]    Dirty summary (moved from bit 31 in RV32)
+    logic [24:0] _wpri_hi;  // [62:38] Reserved (WPRI)
+    logic        MBE;        // [37]    Machine Big Endian
+    logic        SBE;        // [36]    Supervisor Big Endian
+    logic [1:0]  SXL;        // [35:34] S-mode XLEN (WARL, fixed=2 for RV64)
+    logic [1:0]  UXL;        // [33:32] U-mode XLEN (WARL, fixed=2 for RV64)
+    // ---- Lower 32 bits ----
+    logic [8:0]  _wpri_mid;  // [31:23] Reserved (WPRI, was SD+reserved in RV32)
+    logic        TSR;        // [22]    Trap SRET
+    logic        TW;         // [21]    Timeout Wait
+    logic        TVM;        // [20]    Trap Virtual Memory
+    logic        MXR;        // [19]    Make eXecutable Readable
+    logic        SUM;        // [18]    permit Supervisor User Memory access
+    logic        MPRV;       // [17]    Modify PRiVilege
+    logic [1:0]  XS;         // [16:15] user eXtension Status
+    logic [1:0]  FS;         // [14:13] Floating-point Status
+    logic [1:0]  MPP;        // [12:11] Machine Previous Privilege
+    logic [1:0]  VS;         // [10:9]  Vector extension Status (WPRI if no V)
+    logic        SPP;        // [8]     Supervisor Previous Privilege
+    logic        MPIE;       // [7]     Machine Previous Interrupt Enable
+    logic        UBE;        // [6]     User Big Endian
+    logic        SPIE;       // [5]     Supervisor Previous Interrupt Enable
+    logic        _wpri_4;    // [4]     Reserved (WPRI)
+    logic        MIE;        // [3]     Machine Interrupt Enable
+    logic        _wpri_2;    // [2]     Reserved (WPRI)
+    logic        SIE;        // [1]     Supervisor Interrupt Enable
+    logic        _wpri_0;    // [0]     Reserved (WPRI)
 } mstatus_t;
 
 module csr_file(
     input  logic        clk,
     input  logic        rst_n,
     input  logic [31:0] id_inst,
-    input  logic [31:0] id_pc,
+    input  logic [63:0] id_pc,
     input  logic        CsrWrite,
     input  logic [11:0] CsrWriteImm12,
-    input  logic [31:0] csr_write_data,
+    input  logic [63:0] csr_write_data,
     input  logic [2:0]  csr_funct3,
-    output logic [31:0] csr_read_data,
+    output logic [63:0] csr_read_data,
 
     input  logic        ex_trap_take,
-    input  logic [31:0] ex_trap_pc,
-    input  logic [31:0] ex_trap_cause,
-    input  logic [31:0] ex_trap_tval,
+    input  logic [63:0] ex_trap_pc,
+    input  logic [63:0] ex_trap_cause,
+    input  logic [63:0] ex_trap_tval,
     input  logic        ex_trap_mret,
-    output logic [31:0] csr_mtvec,
-    output logic [31:0] csr_mepc,
+    output logic [63:0] csr_mtvec,
+    output logic [63:0] csr_mepc,
     output logic [1:0]  csr_priv_mode,
     output logic        is_illegal_csr
 );
 
     // Minimal CSR set required by riscv-tests/spike boot flow.
     // NOTE: For now these are simple 32-bit regs (no WARL enforcement yet).
-    mstatus_t    mstatus  = 32'h0000_1800;
-    logic [31:0] mstatush = 32'h0000_0000;
-    logic [31:0] mtvec    = 32'h0000_0000;
-    logic [31:0] mepc     = 32'h0000_0000;
-    logic [31:0] mcause   = 32'h0000_0000;
-    logic [31:0] mtval    = 32'h0000_0000;
-    logic [31:0] mhartid  = 32'h0000_0000;
-    logic [31:0] medeleg  = 32'h0000_0000;
-    logic [31:0] mideleg  = 32'h0000_0000;
-    logic [31:0] mie      = 32'h0000_0000;
-    logic [31:0] satp     = 32'h0000_0000;
-    logic [31:0] stvec    = 32'h0000_0000;
-    logic [31:0] pmpcfg0  = 32'h0000_0000;
-    logic [31:0] pmpaddr0 = 32'h0000_0000;
+    mstatus_t    mstatus  = 64'h0000_0000_0000_1800;
+    logic [63:0] mtvec    = 64'h0;
+    logic [63:0] mepc     = 64'h0;
+    logic [63:0] mcause   = 64'h0;
+    logic [63:0] mtval    = 64'h0;
+    logic [63:0] mhartid  = 64'h0;
+    logic [63:0] medeleg  = 64'h0;
+    logic [63:0] mideleg  = 64'h0;
+    logic [63:0] mie      = 64'h0;
+    logic [63:0] satp     = 64'h0;
+    logic [63:0] stvec    = 64'h0;
+    logic [63:0] pmpcfg0  = 64'h0;
+    logic [63:0] pmpaddr0 = 64'h0;
     // mnstatus (0x744) is optional (Smrnmi); Spike may treat it as illegal on rv32i.
     // Keep unimplemented for now to match Spike's illegal-instruction behavior.
 
     // next-state
     mstatus_t    mstatus_n;
-    logic [31:0] mstatush_n;
-    logic [31:0] mtvec_n, mepc_n, mcause_n, mtval_n;
-    logic [31:0] medeleg_n, mideleg_n, mie_n, satp_n, stvec_n;
-    logic [31:0] pmpcfg0_n, pmpaddr0_n;
+    logic [63:0] mtvec_n, mepc_n, mcause_n, mtval_n;
+    logic [63:0] medeleg_n, mideleg_n, mie_n, satp_n, stvec_n;
+    logic [63:0] pmpcfg0_n, pmpaddr0_n;
     logic [1:0]  priv_mode = 2'b11;   // current privilege (M=3, S=1, U=0)
     logic [1:0]  priv_mode_n;
 
@@ -585,10 +590,17 @@ module csr_file(
 
     // 定義 write mask (WPRI 位元為 0)
     // 1 = 可寫 (R/W), 0 = 唯讀或保留 (Read-only / WPRI)
-    // 針對目標：RV32IMA + S-Mode (Linux Ready)
-    // localparam logic [31:0] MSTATUS_WRITE_MASK = {
-    //     1'b0,       // Bit 31: SD (Status Dirty) - 唯讀，由硬體自動計算
-    //     8'b0,       // Bits 30-23: WPRI (Reserved) - 必須為 0
+    // 針對目標：RV64IMA + S-Mode (Linux Ready)
+    // localparam logic [63:0] MSTATUS_WRITE_MASK = {
+    //     // ---- Upper 32 bits (RV64 only) ----
+    //     1'b0,       // Bit 63: SD (Status Dirty) - 唯讀，由硬體自動計算
+    //     25'b0,      // Bits 62-38: WPRI (Reserved)
+    //     1'b0,       // Bit 37: MBE (Machine Big Endian) - 固定 little-endian
+    //     1'b0,       // Bit 36: SBE (Supervisor Big Endian) - 固定 little-endian
+    //     2'b00,      // Bits 35-34: SXL (S-mode XLEN) - WARL, 固定為 2 (64-bit)
+    //     2'b00,      // Bits 33-32: UXL (U-mode XLEN) - WARL, 固定為 2 (64-bit)
+    //     // ---- Lower 32 bits ----
+    //     9'b0,       // Bits 31-23: WPRI (Reserved, was SD+reserved in RV32)
     //     1'b1,       // Bit 22: TSR (Trap SRET)
     //     1'b1,       // Bit 21: TW (Timeout Wait)
     //     1'b1,       // Bit 20: TVM (Trap Virtual Memory)
@@ -596,20 +608,20 @@ module csr_file(
     //     1'b1,       // Bit 18: SUM (Supervisor User Memory Access)
     //     1'b1,       // Bit 17: MPRV (Modify Privilege)
     //     2'b00,      // Bits 16-15: XS (Extension Status) - 通常唯讀
-    //     2'b00,      // Bits 14-13: FS (Floating-point Status) - 目前 RV32I 為 0
+    //     2'b00,      // Bits 14-13: FS (Floating-point Status) - 目前無 F 擴充
     //     2'b11,      // Bits 12-11: MPP (Machine Prev Priv)
-    //     2'b00,      // Bits 10-9: WPRI (Reserved)
+    //     2'b00,      // Bits 10-9: VS (Vector Status) - 目前無 V 擴充
     //     1'b1,       // Bit 8: SPP (Supervisor Prev Priv)
     //     1'b1,       // Bit 7: MPIE
-    //     1'b0,       // Bit 6: WPRI (Reserved / UBE)
+    //     1'b0,       // Bit 6: UBE (User Big Endian) - 固定 little-endian
     //     1'b1,       // Bit 5: SPIE
-    //     1'b0,       // Bit 4: UPIE (User Interrupts) - Linux 通常不用 N 擴充，設 0
+    //     1'b0,       // Bit 4: WPRI (Reserved)
     //     1'b1,       // Bit 3: MIE
     //     1'b0,       // Bit 2: WPRI
     //     1'b1,       // Bit 1: SIE
-    //     1'b0        // Bit 0: UIE (User Interrupts) - Linux 通常不用 N 擴充，設 0
+    //     1'b0        // Bit 0: WPRI
     // };
-    localparam logic [31:0] MSTATUS_WRITE_MASK = 32'h0020_1888; // 為了符合 spike --priv=m
+    localparam logic [63:0] MSTATUS_WRITE_MASK = 64'h0000_0000_0020_1888; // 為了符合 spike --priv=m
 
     function automatic mstatus_t mstatus_legalize(
         input mstatus_t old_val,
@@ -617,8 +629,8 @@ module csr_file(
     );
         mstatus_t result;
         // 保留 WPRI 位元
-        result = mstatus_t'((32'(new_val) & MSTATUS_WRITE_MASK) |
-                            (32'(old_val) & ~MSTATUS_WRITE_MASK));
+        result = mstatus_t'((64'(new_val) & MSTATUS_WRITE_MASK) |
+                            (64'(old_val) & ~MSTATUS_WRITE_MASK));
         // MPP WARL: 2'b10 是非法值
         // if (result.MPP == 2'b10)
             // result.MPP = 2'b00;
@@ -633,15 +645,14 @@ module csr_file(
     // ------------------------------
     always_comb begin
         is_illegal_csr = 0;
-        csr_read_data = 32'h0;
+        csr_read_data = 64'h0;
         if (id_inst[6:0] == 7'b1110011 && id_inst[14:12] != 3'b000) begin // CSR 類（排除 ECALL/MRET）
             unique case (id_inst[31:20])
                 12'h305: csr_read_data = mtvec;
                 12'h341: csr_read_data = mepc;
                 12'h342: csr_read_data = mcause;
                 12'h343: csr_read_data = mtval;
-                12'h300: csr_read_data = 32'(mstatus);
-                12'h310: csr_read_data = mstatush;
+                12'h300: csr_read_data = 64'(mstatus);
                 12'hf14: csr_read_data = mhartid;
                 // 12'h302: csr_read_data = medeleg;
                 12'h303: csr_read_data = mideleg;
@@ -652,7 +663,7 @@ module csr_file(
                 12'h3b0: csr_read_data = pmpaddr0;
                 default: begin
                     is_illegal_csr = 1;
-                    csr_read_data = 32'h0;
+                    csr_read_data = 64'h0;
                 end
             endcase
         end
@@ -665,7 +676,6 @@ module csr_file(
     // ------------------------------
     always_comb begin
         mstatus_n = mstatus;
-        mstatush_n= mstatush;
         mtvec_n   = mtvec;
         mepc_n    = mepc;
         mcause_n  = mcause;
@@ -683,51 +693,48 @@ module csr_file(
         if (CsrWrite) begin
             if (csr_funct3 == 3'b001 || csr_funct3 == 3'b101) begin // csrrw / csrrwi
                 case (CsrWriteImm12)
-                    12'h305: mtvec_n   = {csr_write_data[31:2], 2'b00}; // 僅支援 MODE=Direct，強制對齊
-                    12'h341: mepc_n    = {csr_write_data[31:1], 1'b0};  // 對齊 bit0=0
+                    12'h305: mtvec_n   = {csr_write_data[63:2], 2'b00}; // 僅支援 MODE=Direct，強制對齊
+                    12'h341: mepc_n    = {csr_write_data[63:1], 1'b0};  // 對齊 bit0=0
                     12'h342: mcause_n  = csr_write_data;
                     12'h343: mtval_n   = csr_write_data;
                     12'h300: mstatus_n = mstatus_legalize(mstatus_n, csr_write_data);
-                    12'h310: mstatush_n= csr_write_data;
                     12'h302: medeleg_n = csr_write_data;
                     12'h303: mideleg_n = csr_write_data;
                     12'h304: mie_n     = csr_write_data;
                     12'h180: satp_n    = csr_write_data;
-                    12'h105: stvec_n   = {csr_write_data[31:2], 2'b00}; // direct, aligned
+                    12'h105: stvec_n   = {csr_write_data[63:2], 2'b00}; // direct, aligned
                     12'h3a0: pmpcfg0_n = csr_write_data;
                     12'h3b0: pmpaddr0_n= csr_write_data;
                     default: ; // 其他 CSR 暫不處理
                 endcase
             end else if (csr_funct3 == 3'b010 || csr_funct3 == 3'b110) begin // csrrs / csrrsi
                 case (CsrWriteImm12)
-                    12'h305: mtvec_n   |= {csr_write_data[31:2], 2'b00}; // 僅支援 MODE=Direct，強制對齊
-                    12'h341: mepc_n    |= {csr_write_data[31:1], 1'b0};  // 對齊 bit0=0
+                    12'h305: mtvec_n   |= {csr_write_data[63:2], 2'b00}; // 僅支援 MODE=Direct，強制對齊
+                    12'h341: mepc_n    |= {csr_write_data[63:1], 1'b0};  // 對齊 bit0=0
                     12'h342: mcause_n  |= csr_write_data;
                     12'h343: mtval_n   |= csr_write_data;
                     12'h300: mstatus_n |= csr_write_data;                // FIXME 先不嚴格檢查各位元
-                    12'h310: mstatush_n|= csr_write_data;
                     12'h302: medeleg_n |= csr_write_data;
                     12'h303: mideleg_n |= csr_write_data;
                     12'h304: mie_n     |= csr_write_data;
                     12'h180: satp_n    |= csr_write_data;
-                    12'h105: stvec_n   |= {csr_write_data[31:2], 2'b00};
+                    12'h105: stvec_n   |= {csr_write_data[63:2], 2'b00};
                     12'h3a0: pmpcfg0_n |= csr_write_data;
                     12'h3b0: pmpaddr0_n|= csr_write_data;
                     default: ; // 其他 CSR 暫不處理
                 endcase
             end else if (csr_funct3 == 3'b011 || csr_funct3 == 3'b111) begin // csrrc / csrrci
                 case (CsrWriteImm12)
-                    12'h305: mtvec_n   &= ~{csr_write_data[31:2], 2'b00}; // 僅支援 MODE=Direct，強制對齊
-                    12'h341: mepc_n    &= ~{csr_write_data[31:1], 1'b0};  // 對齊 bit0=0
+                    12'h305: mtvec_n   &= ~{csr_write_data[63:2], 2'b00}; // 僅支援 MODE=Direct，強制對齊
+                    12'h341: mepc_n    &= ~{csr_write_data[63:1], 1'b0};  // 對齊 bit0=0
                     12'h342: mcause_n  &= ~csr_write_data;
                     12'h343: mtval_n   &= ~csr_write_data;
                     12'h300: mstatus_n &= ~csr_write_data;                // FIXME 先不嚴格檢查各位元
-                    12'h310: mstatush_n&= ~csr_write_data;
                     12'h302: medeleg_n &= ~csr_write_data;
                     12'h303: mideleg_n &= ~csr_write_data;
                     12'h304: mie_n     &= ~csr_write_data;
                     12'h180: satp_n    &= ~csr_write_data;
-                    12'h105: stvec_n   &= ~{csr_write_data[31:2], 2'b00};
+                    12'h105: stvec_n   &= ~{csr_write_data[63:2], 2'b00};
                     12'h3a0: pmpcfg0_n &= ~csr_write_data;
                     12'h3b0: pmpaddr0_n&= ~csr_write_data;
                     default: ; // 其他 CSR 暫不處理
@@ -737,7 +744,7 @@ module csr_file(
 
         // (2) Trap-entry：覆蓋/轉換，基於「已套用 CSRW 後」的 *_n
         if (ex_trap_take) begin
-            mepc_n    = {ex_trap_pc[31:1], 1'b0};
+            mepc_n    = {ex_trap_pc[63:1], 1'b0};
             mcause_n  = ex_trap_cause;
             mtval_n   = ex_trap_tval;
 
@@ -763,24 +770,22 @@ module csr_file(
     // ------------------------------
     always_ff @(posedge clk) begin
         if (!rst_n) begin
-            mstatus   <= 32'h0000_1800;
-            mstatush  <= 32'h0000_0000;
-            mtvec     <= 32'h0000_0000;
-            mepc      <= 32'h0000_0000;
-            mcause    <= 32'h0000_0000;
-            mtval     <= 32'h0000_0000;
-            mhartid   <= 32'h0000_0000;
-            medeleg   <= 32'h0000_0000;
-            mideleg   <= 32'h0000_0000;
-            mie       <= 32'h0000_0000;
-            satp      <= 32'h0000_0000;
-            stvec     <= 32'h0000_0000;
-            pmpcfg0   <= 32'h0000_0000;
-            pmpaddr0  <= 32'h0000_0000;
+            mstatus   <= 64'h0000_0000_0000_1800;
+            mtvec     <= 64'h0;
+            mepc      <= 64'h0;
+            mcause    <= 64'h0;
+            mtval     <= 64'h0;
+            mhartid   <= 64'h0;
+            medeleg   <= 64'h0;
+            mideleg   <= 64'h0;
+            mie       <= 64'h0;
+            satp      <= 64'h0;
+            stvec     <= 64'h0;
+            pmpcfg0   <= 64'h0;
+            pmpaddr0  <= 64'h0;
             priv_mode <= 2'b11;
         end else begin
             mstatus <= mstatus_n;
-            mstatush<= mstatush_n;
             mtvec   <= mtvec_n;
             mepc    <= mepc_n;
             mcause  <= mcause_n;
@@ -881,7 +886,8 @@ module control_unit(
     output logic isSub,
     output logic isValid,
     output logic [4:0] decoded_rs1,
-    output logic [4:0] decoded_rs2
+    output logic [4:0] decoded_rs2,
+    output logic isWordOp
 );
 
     always_comb begin
@@ -899,6 +905,7 @@ module control_unit(
                 isValid = 1;
                 decoded_rs1 = inst[19:15];
                 decoded_rs2 = inst[24:20];
+                isWordOp = 0;
             end
             7'b0010011: begin // I-format
                 ALUSrc = 1;
@@ -913,6 +920,22 @@ module control_unit(
                 isValid = 1;
                 decoded_rs1 = inst[19:15];
                 decoded_rs2 = 0;
+                isWordOp = 0;
+            end
+            7'b0011011: begin // I-format, Word
+                ALUSrc = 1;
+                ALUSrcA_sel = 2'b00;
+                MemtoReg = 0;
+                RegWrite = 1;
+                MemRead = 0;
+                MemWrite = 0;
+                Branch = 0;
+                ALUOp = 2'b10;
+                isSub = 0;
+                isValid = 1;
+                decoded_rs1 = inst[19:15];
+                decoded_rs2 = 0;
+                isWordOp = 1;
             end
             7'b0000011: begin // lw
                 ALUSrc = 1;
@@ -927,6 +950,7 @@ module control_unit(
                 isValid = 1;
                 decoded_rs1 = inst[19:15];
                 decoded_rs2 = 0;
+                isWordOp = 0;
             end
             7'b0100011: begin // sw
                 ALUSrc = 1;
@@ -941,6 +965,7 @@ module control_unit(
                 isValid = 1;
                 decoded_rs1 = inst[19:15];
                 decoded_rs2 = inst[24:20];
+                isWordOp = 0;
             end
             7'b1100011: begin // beq
                 ALUSrc = 0;
@@ -955,6 +980,7 @@ module control_unit(
                 isValid = 1;
                 decoded_rs1 = inst[19:15];
                 decoded_rs2 = inst[24:20];
+                isWordOp = 0;
             end
             7'b0110111: begin // lui
                 ALUSrc = 1;
@@ -969,6 +995,7 @@ module control_unit(
                 isValid = 1;
                 decoded_rs1 = 0;
                 decoded_rs2 = 0;
+                isWordOp = 0;
             end
             7'b0010111: begin // auipc
                 ALUSrc = 1;
@@ -983,6 +1010,7 @@ module control_unit(
                 isValid = 1;
                 decoded_rs1 = 0;
                 decoded_rs2 = 0;
+                isWordOp = 0;
             end
             7'b1101111: begin // jal
                 ALUSrc = 1;
@@ -997,6 +1025,7 @@ module control_unit(
                 isValid = 1;
                 decoded_rs1 = 0;
                 decoded_rs2 = 0;
+                isWordOp = 0;
             end
             7'b1100111: begin // jalr
                 ALUSrc = 1;
@@ -1011,6 +1040,7 @@ module control_unit(
                 isValid = 1;
                 decoded_rs1 = inst[19:15];
                 decoded_rs2 = 0;
+                isWordOp = 0;
             end
             7'b1110011: begin // system/csr
                 ALUSrc = 1;
@@ -1030,6 +1060,7 @@ module control_unit(
                     RegWrite = 0;
                     decoded_rs1 = 0;
                 end
+                isWordOp = 0;
             end
             default: begin
                 ALUSrc = 0;
@@ -1044,6 +1075,7 @@ module control_unit(
                 isValid = 0;
                 decoded_rs1 = 0;
                 decoded_rs2 = 0;
+                isWordOp = 0;
             end
         endcase
     end
@@ -1052,29 +1084,29 @@ endmodule
 
 module imm32_gen(
     input logic [31:0] inst,
-    output logic [31:0] imm32
+    output logic [63:0] imm32
 );
 
     always_comb begin
         unique case (inst[6:0])
             7'b0000011, // Load
-            7'b0010011: // ALU immediate
-                imm32 = {{20{inst[31]}}, inst[31:20]};
+            7'b0010011, 7'b0011011: // ALU immediate
+                imm32 = {{52{inst[31]}}, inst[31:20]};
             7'b0100011: // Store
-                imm32 = {{20{inst[31]}}, inst[31:25], inst[11:7]};
+                imm32 = {{52{inst[31]}}, inst[31:25], inst[11:7]};
             7'b1100011: // Branch
-                imm32 = {{19{inst[31]}}, inst[31], inst[7], inst[30:25], inst[11:8], 1'b0};
+                imm32 = {{51{inst[31]}}, inst[31], inst[7], inst[30:25], inst[11:8], 1'b0};
             7'b0110111, // lui
             7'b0010111: // auipc
-                imm32 = {inst[31:12], 12'b0};
+                imm32 = {{32{inst[31]}}, inst[31:12], 12'b0};
             7'b1101111: // jal
-                imm32 = 32'h4;
+                imm32 = 64'h4;
             7'b1100111: // jalr
-                imm32 = 32'h4;
+                imm32 = 64'h4;
             7'b1110011: // csr
-                imm32 = 32'h0;
+                imm32 = 64'h0;
             default:
-                imm32 = 32'h0;
+                imm32 = 64'h0;
         endcase
     end
 
@@ -1084,13 +1116,13 @@ module program_counter #(
     // Simulation/SoC integration:
     // - default 0 keeps existing in-repo tests (linked at 0) working
     // - riscv-tests + spike default boot flow starts at 0x0000_1000
-    parameter logic [31:0] RESET_PC = 32'h0000_0000
+    parameter logic [63:0] RESET_PC = 64'h0
 )(
     input logic clk,
     input logic rst_n,
     input logic PCWrite,
-    input logic [31:0] pc_next,
-    output logic [31:0] pc_current
+    input logic [63:0] pc_next,
+    output logic [63:0] pc_current
 );
 
     always_ff @(posedge clk) begin
@@ -1098,7 +1130,7 @@ module program_counter #(
             pc_current <= RESET_PC;
         end else begin
             if (PCWrite) begin
-                pc_current <= {pc_next[31:2], 2'b00};
+                pc_current <= {pc_next[63:2], 2'b00};
             end
         end
     end
@@ -1107,9 +1139,9 @@ endmodule
 
 module mux2to1(
     input logic sel,
-    input logic [31:0] A,
-    input logic [31:0] B,
-    output logic [31:0] mux_out
+    input logic [63:0] A,
+    input logic [63:0] B,
+    output logic [63:0] mux_out
 );
 
     always_comb begin
@@ -1120,10 +1152,10 @@ endmodule
 
 module mux3to1(
     input logic [1:0] sel,
-    input logic [31:0] A,
-    input logic [31:0] B,
-    input logic [31:0] C,
-    output logic [31:0] mux_out
+    input logic [63:0] A,
+    input logic [63:0] B,
+    input logic [63:0] C,
+    output logic [63:0] mux_out
 );
 
     always_comb begin
@@ -1138,11 +1170,11 @@ module mux3to1(
 endmodule
 
 module uart_addr_offset(
-    input logic [31:0] addr,
+    input logic [63:0] addr,
     output logic [1:0] uart_addr
 );
 
-    logic [31:0] tmp;
+    logic [63:0] tmp;
     always_comb begin
         tmp = addr - UART_ADDR_OFFSET;
         uart_addr = tmp[3:2];
@@ -1155,20 +1187,20 @@ module if_id_pipeline(
     input logic rst_n,
     input logic if_id_Write,
     input logic if_Flush,
-    input logic [31:0] if_pc,
+    input logic [63:0] if_pc,
     input logic [31:0] if_inst,
-    output logic [31:0] id_pc,
+    output logic [63:0] id_pc,
     output logic [31:0] id_inst,
     output logic        id_stage_valid
 );
 
     always_ff @(posedge clk) begin
         if (!rst_n) begin
-            id_pc <= 32'h0;
+            id_pc <= 64'h0;
             id_inst <= 32'h0;
             id_stage_valid <= 1'b0;
         end else if (if_Flush) begin
-            id_pc <= 32'h0;
+            id_pc <= 64'h0;
             id_inst <= 32'h00000013; // NOP
             id_stage_valid <= 1'b0;  // flush 插入 bubble：視為無效指令
         end else if (if_id_Write) begin
@@ -1198,22 +1230,23 @@ module id_ex_pipeline(
     input logic id_isValid,
     input logic id_stage_valid,
 
-    input logic [31:0] id_pc,
+    input logic [63:0] id_pc,
     input logic [31:0] id_inst,
-    input logic [31:0] id_read_data1,
-    input logic [31:0] id_read_data2,
-    input logic [31:0] id_imm32,
+    input logic [63:0] id_read_data1,
+    input logic [63:0] id_read_data2,
+    input logic [63:0] id_imm32,
     input logic [2:0] id_funct3,
     input logic [4:0] id_rd,
     input logic [4:0] id_decoded_rs1,
     input logic [4:0] id_decoded_rs2,
+    input logic id_isWordOp,
 
     input logic id_CsrtoReg,
     input logic id_CsrWrite,
     input logic [11:0] id_CsrWriteImm12,
-    input logic [31:0] id_csr_read_data,
-    input logic [31:0] id_csr_mtvec,
-    input logic [31:0] id_csr_mepc,
+    input logic [63:0] id_csr_read_data,
+    input logic [63:0] id_csr_mtvec,
+    input logic [63:0] id_csr_mepc,
     input logic id_csr_src_is_zimm,
     input logic [2:0] id_csr_funct3,
     input logic id_is_illegal_csr,
@@ -1230,22 +1263,23 @@ module id_ex_pipeline(
     output logic ex_isValid,
     output logic ex_stage_valid,
 
-    output logic [31:0] ex_pc,
+    output logic [63:0] ex_pc,
     output logic [31:0] ex_inst,
-    output logic [31:0] ex_read_data1,
-    output logic [31:0] ex_read_data2,
-    output logic [31:0] ex_imm32,
+    output logic [63:0] ex_read_data1,
+    output logic [63:0] ex_read_data2,
+    output logic [63:0] ex_imm32,
     output logic [2:0] ex_funct3,
     output logic [4:0] ex_rd,
     output logic [4:0] ex_decoded_rs1,
     output logic [4:0] ex_decoded_rs2,
+    output logic ex_isWordOp,
 
     output logic ex_CsrtoReg,
     output logic ex_CsrWrite,
     output logic [11:0] ex_CsrWriteImm12,
-    output logic [31:0] ex_csr_read_data,
-    output logic [31:0] ex_csr_mtvec,
-    output logic [31:0] ex_csr_mepc,
+    output logic [63:0] ex_csr_read_data,
+    output logic [63:0] ex_csr_mtvec,
+    output logic [63:0] ex_csr_mepc,
     output logic ex_csr_src_is_zimm,
     output logic [2:0] ex_csr_funct3,
     output logic ex_is_illegal_csr
@@ -1266,6 +1300,7 @@ module id_ex_pipeline(
             ex_stage_valid <= 0;
             ex_decoded_rs1 <= 0;
             ex_decoded_rs2 <= 0;
+            ex_isWordOp <= 0;
             ex_pc <= 0;
             ex_inst <= 0;
             ex_read_data1 <= 0;
@@ -1296,6 +1331,7 @@ module id_ex_pipeline(
             ex_stage_valid <= 0;
             ex_decoded_rs1 <= 0;
             ex_decoded_rs2 <= 0;
+            ex_isWordOp <= 0;
             ex_pc <= 0;
             ex_inst <= 32'h00000013; // NOP
             ex_read_data1 <= 0;
@@ -1326,6 +1362,7 @@ module id_ex_pipeline(
             ex_stage_valid <= id_stage_valid;
             ex_decoded_rs1 <= id_decoded_rs1;
             ex_decoded_rs2 <= id_decoded_rs2;
+            ex_isWordOp <= id_isWordOp;
             ex_pc <= id_pc;
             ex_inst <= id_inst;
             ex_read_data1 <= id_read_data1;
@@ -1356,17 +1393,17 @@ module ex_mem_pipeline(
     input logic ex_Branch,
     input logic ex_MemRead,
     input logic ex_MemWrite,
-    input logic [31:0] ex_pc,
+    input logic [63:0] ex_pc,
     input logic [31:0] ex_inst,
     input logic ex_Zero,
-    input logic [31:0] ex_alu_out,
-    input logic [31:0] ex_read_data2,
+    input logic [63:0] ex_alu_out,
+    input logic [63:0] ex_read_data2,
     input logic [4:0] ex_rd,
     input logic [2:0] ex_funct3,
     input logic ex_CsrtoReg,
     input logic ex_CsrWrite,
     input logic [11:0] ex_CsrWriteImm12,
-    input logic [31:0] ex_csr_read_data,
+    input logic [63:0] ex_csr_read_data,
     input logic [2:0] ex_csr_funct3,
     input logic ex_stage_valid,
     output logic mem_MemtoReg,
@@ -1374,17 +1411,17 @@ module ex_mem_pipeline(
     output logic mem_Branch,
     output logic mem_MemRead,
     output logic mem_MemWrite,
-    output logic [31:0] mem_pc,
+    output logic [63:0] mem_pc,
     output logic [31:0] mem_inst,
     output logic mem_Zero,
-    output logic [31:0] mem_alu_out,
-    output logic [31:0] mem_read_data2,
+    output logic [63:0] mem_alu_out,
+    output logic [63:0] mem_read_data2,
     output logic [4:0] mem_rd,
     output logic [2:0] mem_funct3,
     output logic mem_CsrtoReg,
     output logic mem_CsrWrite,
     output logic [11:0] mem_CsrWriteImm12,
-    output logic [31:0] mem_csr_read_data,
+    output logic [63:0] mem_csr_read_data,
     output logic [2:0] mem_csr_funct3,
     output logic mem_stage_valid
 );
@@ -1439,32 +1476,32 @@ module mem_wb_pipeline(
     input logic mem_wb_Write,
     input logic mem_RegWrite,
     input logic mem_MemtoReg,
-    input logic [31:0] mem_memory_read_data,
-    input logic [31:0] mem_alu_out,
+    input logic [63:0] mem_memory_read_data,
+    input logic [63:0] mem_alu_out,
     // Carry store data to WB so we can produce Spike-like logs (mem addr + data)
     // and build signature from retired stores without peeking into RAM arrays.
-    input logic [31:0] mem_store_data,
+    input logic [63:0] mem_store_data,
     input logic [4:0] mem_rd,
     input logic mem_CsrtoReg,
     input logic mem_CsrWrite,
     input logic [11:0] mem_CsrWriteImm12,
-    input logic [31:0] mem_csr_read_data,
+    input logic [63:0] mem_csr_read_data,
     input logic [2:0] mem_csr_funct3,
-    input logic [31:0] mem_pc,
+    input logic [63:0] mem_pc,
     input logic [31:0] mem_inst,
     input logic mem_stage_valid,
     output logic wb_RegWrite,
     output logic wb_MemtoReg,
-    output logic [31:0] wb_memory_read_data,
-    output logic [31:0] wb_alu_out,
-    output logic [31:0] wb_store_data,
+    output logic [63:0] wb_memory_read_data,
+    output logic [63:0] wb_alu_out,
+    output logic [63:0] wb_store_data,
     output logic [4:0] wb_rd,
     output logic wb_CsrtoReg,
     output logic wb_CsrWrite,
     output logic [11:0] wb_CsrWriteImm12,
-    output logic [31:0] wb_csr_read_data,
+    output logic [63:0] wb_csr_read_data,
     output logic [2:0] wb_csr_funct3,
-    output logic [31:0] wb_pc,
+    output logic [63:0] wb_pc,
     output logic [31:0] wb_inst,
     output logic wb_stage_valid
 );
@@ -1598,26 +1635,26 @@ endmodule
 
 module control_hazard_detection_unit(
     input logic [31:0] ex_inst,
-    input logic [31:0] ex_pc,
-    input logic [31:0] ex_imm32,
-    input logic [31:0] ex_mux3to1_alu_a_out,
-    input logic [31:0] ex_mux3to1_alu_b_out,
-    input logic [31:0] ex_alu_out,
+    input logic [63:0] ex_pc,
+    input logic [63:0] ex_imm32,
+    input logic [63:0] ex_mux3to1_alu_a_out,
+    input logic [63:0] ex_mux3to1_alu_b_out,
+    input logic [63:0] ex_alu_out,
     input logic ex_MemRead,
     input logic ex_MemWrite,
-    input logic [31:0] ex_csr_mtvec,
-    input logic [31:0] ex_csr_mepc,
+    input logic [63:0] ex_csr_mtvec,
+    input logic [63:0] ex_csr_mepc,
     input logic  ex_is_illegal_csr,
     input logic [1:0] ex_priv_mode,
     output logic ex_trap_take,
-    output logic [31:0] ex_trap_pc,
-    output logic [31:0] ex_trap_cause,
-    output logic [31:0] ex_trap_tval,
+    output logic [63:0] ex_trap_pc,
+    output logic [63:0] ex_trap_cause,
+    output logic [63:0] ex_trap_tval,
     output logic ex_trap_mret,
     output logic if_Flush,
     output logic id_Flush,
     output logic pc_branch_sel,
-    output logic [31:0] pc_branch_target
+    output logic [63:0] pc_branch_target
 );
 
     logic branch_taken = 0;
@@ -1738,19 +1775,19 @@ module control_hazard_detection_unit(
         if (branch_taken) begin
             pc_branch_sel    = 1'b1;              // pc mux 選 branch
             if (is_jal) begin
-                pc_branch_target = ex_pc + {{12{ex_inst[31]}}, ex_inst[19:12], ex_inst[20], ex_inst[30:21], 1'b0};
+                pc_branch_target = ex_pc + {{44{ex_inst[31]}}, ex_inst[19:12], ex_inst[20], ex_inst[30:21], 1'b0};
             end else if (is_jalr) begin
-                pc_branch_target = (ex_mux3to1_alu_a_out + {{20{ex_inst[31]}}, ex_inst[31:20]}) & 32'hffff_fffe;
+                pc_branch_target = (ex_mux3to1_alu_a_out + {{52{ex_inst[31]}}, ex_inst[31:20]}) & 64'hffff_ffff_ffff_fffe;
             end else if (is_ecall) begin
                 ex_trap_take        = 1'b1;
                 ex_trap_pc          = ex_pc;
                 // ecall cause depends on current privilege mode
                 unique case (ex_priv_mode)
-                    2'b00: ex_trap_cause = 32'd8;   // ECALL from U-mode
-                    2'b01: ex_trap_cause = 32'd9;   // ECALL from S-mode
-                    default: ex_trap_cause = 32'd11; // ECALL from M-mode
+                    2'b00: ex_trap_cause = 64'd8;   // ECALL from U-mode
+                    2'b01: ex_trap_cause = 64'd9;   // ECALL from S-mode
+                    default: ex_trap_cause = 64'd11; // ECALL from M-mode
                 endcase
-                ex_trap_tval        = 32'd0;
+                ex_trap_tval        = 64'd0;
                 pc_branch_target    = ex_csr_mtvec;
 `ifdef IVERILOG
                 if ($test$plusargs("TRAPDBG")) begin
@@ -1763,8 +1800,8 @@ module control_hazard_detection_unit(
             end else if (ex_is_illegal_csr) begin
                 ex_trap_take        = 1'b1;
                 ex_trap_pc          = ex_pc;
-                ex_trap_cause       = 32'd2; // Mcause code=2
-                ex_trap_tval        = 32'd0;
+                ex_trap_cause       = 64'd2; // Mcause code=2
+                ex_trap_tval        = 64'd0;
                 pc_branch_target    = ex_csr_mtvec;
 `ifdef IVERILOG
                 if ($test$plusargs("TRAPDBG")) begin
@@ -1788,13 +1825,13 @@ module control_hazard_detection_unit(
             end else if (is_misaligned_read) begin
                 ex_trap_take = 1'b1;
                 ex_trap_pc = ex_pc;
-                ex_trap_cause = 4; // RISC-V ISA Volume II p.49
+                ex_trap_cause = 64'd4; // RISC-V ISA Volume II p.49
                 ex_trap_tval = ex_alu_out;
                 pc_branch_target = ex_csr_mtvec;
             end else if (is_misaligned_write) begin
                 ex_trap_take = 1'b1;
                 ex_trap_pc = ex_pc;
-                ex_trap_cause = 6; // Store/AMO address misaligned
+                ex_trap_cause = 64'd6; // Store/AMO address misaligned
                 ex_trap_tval = ex_alu_out;
                 pc_branch_target = ex_csr_mtvec;
             end else begin
@@ -2051,19 +2088,19 @@ module leds_ctrl(
     input logic rst_n,
     input logic MemRead,
     input logic MemWrite,
-    input logic [31:0] write_data,
-    output logic [31:0] read_data,
+    input logic [63:0] write_data,
+    output logic [63:0] read_data,
     output logic [7:0] leds
 );
 
     logic [7:0] leds_reg = 8'h0;
 
     always_comb begin
-        read_data = 32'h0;
+        read_data = 64'h0;
         if (MemRead) begin
-            read_data = {24'b0, leds_reg};
+            read_data = {56'b0, leds_reg};
         end else begin
-            read_data = 32'h0;
+            read_data = 64'h0;
         end
     end
 
@@ -2089,11 +2126,11 @@ module lsu(
     input  logic        mem_uart_write_done,
     input  logic        mem_data_read_data_valid,
     input  logic        mem_uart_read_data_valid,
-    input  logic [31:0] mem_mux_read_data,
+    input  logic [63:0] mem_mux_read_data,
     output logic        mem_MemRead_gated,
     output logic        mem_MemWrite_gated,
-    output logic [31:0] mem_read_data_latched,
-    output logic [31:0] mem_final_read_data
+    output logic [63:0] mem_read_data_latched,
+    output logic [63:0] mem_final_read_data
 );
 
     // --- Architectural Fix for Stalled Memory Ops ---
@@ -2106,7 +2143,7 @@ module lsu(
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             mem_op_done <= 1'b0;
-            mem_read_data_latched <= 32'h0;
+            mem_read_data_latched <= 64'h0;
         end else begin
             if (ex_mem_Write) begin // Pipeline advancing (new instruction enters MEM)
                 mem_op_done <= 1'b0;
@@ -2131,7 +2168,7 @@ endmodule
 module riscv_cpu #(
     // Default keeps existing internal tests (linked at 0) working.
     // For Spike-compatible riscv-tests flow, set to 0x0000_1000 in TB.
-    parameter logic [31:0] RESET_PC = 32'h0000_0000
+    parameter logic [63:0] RESET_PC = 64'h0
 )(
     input  logic clk,
     input  logic btn_reset_n,
@@ -2220,11 +2257,11 @@ module riscv_cpu #(
     endtask
 
 
-    wire [31:0] pc_current;
-    wire [31:0] pc_next;
+    wire [63:0] pc_current;
+    wire [63:0] pc_next;
     wire [31:0] if_inst;
 
-    wire [31:0] id_pc;
+    wire [63:0] id_pc;
     wire [31:0] id_inst;
 
     wire if_id_Write;
@@ -2236,10 +2273,10 @@ module riscv_cpu #(
     wire if_Flush;
     wire id_Flush;
     wire pc_branch_sel;
-    wire [31:0] pc_branch_target;
+    wire [63:0] pc_branch_target;
 
-    wire [31:0] id_imm32;
-    wire [31:0] ex_imm32;
+    wire [63:0] id_imm32;
+    wire [63:0] ex_imm32;
 
     wire id_ALUSrc;
     wire [1:0] id_ALUSrcA_sel;
@@ -2256,9 +2293,9 @@ module riscv_cpu #(
     wire id_CsrtoReg;
     wire id_CsrWrite;
     wire [11:0] id_CsrWriteImm12;
-    wire [31:0] id_csr_read_data;
-    wire [31:0] id_csr_mtvec;
-    wire [31:0] id_csr_mepc;
+    wire [63:0] id_csr_read_data;
+    wire [63:0] id_csr_mtvec;
+    wire [63:0] id_csr_mepc;
     wire id_csr_src_is_zimm;
     wire [2:0] id_csr_funct3;
     wire id_is_illegal_csr;
@@ -2286,19 +2323,19 @@ module riscv_cpu #(
 
     wire [2:0] ex_funct3;
     wire [4:0] ex_rd;
-    wire [31:0] ex_pc;
+    wire [63:0] ex_pc;
     wire [31:0] ex_inst;
 
     wire ex_CsrtoReg;
     wire ex_CsrWrite;
     wire [11:0] ex_CsrWriteImm12;
-    wire [31:0] ex_csr_read_data;
-    wire [31:0] ex_csr_mtvec;
-    wire [31:0] ex_csr_mepc;
+    wire [63:0] ex_csr_read_data;
+    wire [63:0] ex_csr_mtvec;
+    wire [63:0] ex_csr_mepc;
     wire ex_trap_take;
-    wire [31:0] ex_trap_pc;
-    wire [31:0] ex_trap_cause;
-    wire [31:0] ex_trap_tval;
+    wire [63:0] ex_trap_pc;
+    wire [63:0] ex_trap_cause;
+    wire [63:0] ex_trap_tval;
     wire ex_trap_mret;
     // Pulse trap/mret effects only when EX->MEM is advancing (avoid repeating side-effects on stalls)
     wire ex_trap_take_fire;
@@ -2309,21 +2346,21 @@ module riscv_cpu #(
 
     wire [1:0] ForwardA;
     wire [1:0] ForwardB;
-    wire [31:0] mux3to1_alu_a_out;
-    wire [31:0] mux3to1_alu_b_out;
-    wire [31:0] mux3to1_alu_a_operand_out;
-    wire [31:0] mux3to1_alu_a_out_forward;
+    wire [63:0] mux3to1_alu_a_out;
+    wire [63:0] mux3to1_alu_b_out;
+    wire [63:0] mux3to1_alu_a_operand_out;
+    wire [63:0] mux3to1_alu_a_out_forward;
 
     wire mem_MemtoReg;
     wire mem_RegWrite;
     wire mem_Branch; // 可以刪掉？
     wire mem_MemRead;
     wire mem_MemWrite;
-    wire [31:0] mem_pc;
+    wire [63:0] mem_pc;
     wire [31:0] mem_inst;
     wire mem_Zero;
-    wire [31:0] mem_alu_out;
-    wire [31:0] mem_read_data2;
+    wire [63:0] mem_alu_out;
+    wire [63:0] mem_read_data2;
     wire [4:0] mem_rd;
     wire [2:0] mem_funct3;
     wire mem_stage_valid;
@@ -2331,38 +2368,42 @@ module riscv_cpu #(
     wire mem_CsrtoReg;
     wire mem_CsrWrite;
     wire [11:0] mem_CsrWriteImm12;
-    wire [31:0] mem_csr_read_data;
+    wire [63:0] mem_csr_read_data;
     wire [2:0] mem_csr_funct3;
 
-    wire [31:0] mux_alu_out;
+    wire [63:0] mux_alu_out;
 
     wire [3:0] alu_ctrl;
 
     wire ex_Zero;
-    wire [31:0] ex_alu_out;
+    wire [63:0] ex_alu_out_raw;
+    wire [63:0] ex_alu_out;
 
-    wire [31:0] id_read_data1;
-    wire [31:0] id_read_data2;
-    wire [31:0] ex_read_data1;
-    wire [31:0] ex_read_data2;
+    wire [63:0] id_read_data1;
+    wire [63:0] id_read_data2;
+    wire [63:0] ex_read_data1;
+    wire [63:0] ex_read_data2;
 
     wire [4:0] id_decoded_rs1;
     wire [4:0] id_decoded_rs2;
     wire [4:0] ex_decoded_rs1;
     wire [4:0] ex_decoded_rs2;
 
+    wire id_isWordOp;
+    wire ex_isWordOp;
+
     wire wb_RegWrite;
     wire wb_MemtoReg;
-    wire [31:0] wb_memory_read_data;
-    wire [31:0] wb_alu_out;
+    wire [63:0] wb_memory_read_data;
+    wire [63:0] wb_alu_out;
     wire [4:0] wb_rd;
 
     wire wb_CsrtoReg;
     wire wb_CsrWrite;
     wire [11:0] wb_CsrWriteImm12;
-    wire [31:0] wb_csr_read_data;
+    wire [63:0] wb_csr_read_data;
     wire [2:0] wb_csr_funct3;
-    wire [31:0] wb_pc;
+    wire [63:0] wb_pc;
     wire [31:0] wb_inst;
     wire wb_stage_valid;
 
@@ -2379,20 +2420,20 @@ module riscv_cpu #(
     wire mem_uart_write_done;
     wire mem_leds_MemRead;
     wire mem_leds_MemWrite;
-    wire [31:0] mem_memory_read_data;
-    wire [31:0] mem_uart_read_data;
-    wire [31:0] mem_leds_read_data;
-    wire [31:0] mem_mux_read_data;
+    wire [63:0] mem_memory_read_data;
+    wire [63:0] mem_uart_read_data;
+    wire [63:0] mem_leds_read_data;
+    wire [63:0] mem_mux_read_data;
 
     // LSU
     wire mem_MemRead_gated;
     wire mem_MemWrite_gated;
-    wire [31:0] mem_read_data_latched;
-    wire [31:0] mem_final_read_data;
+    wire [63:0] mem_read_data_latched;
+    wire [63:0] mem_final_read_data;
 
-    wire [31:0] wb_reg_write_data;
-    wire [31:0] wb_mux_write_data;
-    wire [31:0] wb_store_data;
+    wire [63:0] wb_reg_write_data;
+    wire [63:0] wb_mux_write_data;
+    wire [63:0] wb_store_data;
 
     wire hazard_control_mux_sel;
     wire PCWrite_final;
@@ -2473,7 +2514,7 @@ module riscv_cpu #(
 
     mux2to1 mux2to1_pc(
         .sel(pc_branch_sel),
-        .A(pc_current + 32'd4),
+        .A(pc_current + 64'd4),
         .B(pc_branch_target),
         .mux_out(pc_next)
     );
@@ -2598,6 +2639,7 @@ module riscv_cpu #(
         .id_rd(id_inst[11:7]),
         .id_decoded_rs1(id_decoded_rs1),
         .id_decoded_rs2(id_decoded_rs2),
+        .id_isWordOp(id_isWordOp),
 
         .id_CsrtoReg(mux_id_CsrtoReg),
         .id_CsrWrite(mux_id_CsrWrite),
@@ -2630,6 +2672,7 @@ module riscv_cpu #(
         .ex_rd(ex_rd),
         .ex_decoded_rs1(ex_decoded_rs1),
         .ex_decoded_rs2(ex_decoded_rs2),
+        .ex_isWordOp(ex_isWordOp),
 
         .ex_CsrtoReg(ex_CsrtoReg),
         .ex_CsrWrite(ex_CsrWrite),
@@ -2753,7 +2796,8 @@ module riscv_cpu #(
         .isSub(id_isSub),
         .isValid(id_isValid),
         .decoded_rs1(id_decoded_rs1),
-        .decoded_rs2(id_decoded_rs2)
+        .decoded_rs2(id_decoded_rs2),
+        .isWordOp(id_isWordOp)
     );
 
     csr_control_unit csr_control_unit_0(
@@ -2786,7 +2830,7 @@ module riscv_cpu #(
     );
 
     // MEM 階段的最終寫回數據（考慮 CSR）
-    wire [31:0] mem_mux_write_data;
+    wire [63:0] mem_mux_write_data;
     assign mem_mux_write_data = mem_CsrtoReg ? mem_csr_read_data : mem_alu_out;
 
     mux3to1 mux3to1_alu_a(
@@ -2808,7 +2852,7 @@ module riscv_cpu #(
     mux2to1 mux2to1_alu_a_csr_zimm(
         .sel(ex_csr_src_is_zimm),
         .A(mux3to1_alu_a_out_forward),
-        .B({27'b0, ex_decoded_rs1}),  // Zero-extend 5-bit rs1/zimm to 32-bit
+        .B({59'b0, ex_decoded_rs1}),  // Zero-extend 5-bit rs1/zimm to 64-bit
         .mux_out(mux3to1_alu_a_out)
     );
 
@@ -2816,7 +2860,7 @@ module riscv_cpu #(
         .sel(ex_ALUSrcA_sel),
         .A(mux3to1_alu_a_out),
         .B(ex_pc),
-        .C(32'h0),
+        .C(64'h0),
         .mux_out(mux3to1_alu_a_operand_out)
     );
 
@@ -2831,8 +2875,15 @@ module riscv_cpu #(
         .alu_ctrl(alu_ctrl),
         .A(mux3to1_alu_a_operand_out),
         .B(mux_alu_out),
-        .alu_out(ex_alu_out),
+        .alu_out(ex_alu_out_raw),
         .zero(ex_Zero)
+    );
+
+    mux2to1 mux2to1_alu_word(
+        .sel(ex_isWordOp),
+        .A(ex_alu_out_raw),
+        .B({{32{ex_alu_out_raw[31]}}, ex_alu_out_raw[31:0]}),
+        .mux_out(ex_alu_out)
     );
 
     mux2to1 mux2to1_wb_reg_write_data(

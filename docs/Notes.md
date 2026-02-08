@@ -631,3 +631,27 @@ PASS rv32mi-p-sh-misaligned 5.88s
 FAIL rv32mi-p-shamt 7.19s
 PASS rv32mi-p-sw-misaligned 5.85s
 FAIL rv32mi-p-zicntr 0.11s
+
+
+02/08
+==============
+
+```verilog
+    mux3to1 mux3to1_alu_a_operand(
+        .sel(ex_ALUSrcA_sel),
+        .A(mux3to1_alu_a_out),
+        .B(ex_pc),
+        .C(64'h0),
+        .mux_out(mux3to1_alu_a_operand_out)
+    );
+
+    mux2to1 mux2to1_alu(
+        .sel(ex_ALUSrc),
+        .A(mux3to1_alu_b_out),
+        .B(ex_imm32),
+        .mux_out(mux_alu_out)
+    );
+```
+
+ilp32: int, long, pointer 32 bits
+lp64: int 32 bits, long, pointer 64 bits

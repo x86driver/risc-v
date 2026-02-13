@@ -655,3 +655,8 @@ FAIL rv32mi-p-zicntr 0.11s
 
 ilp32: int, long, pointer 32 bits
 lp64: int 32 bits, long, pointer 64 bits
+
+
+make riscv-tests PATTERN='rv64ui-p-*'
+time make xsim-test-quick ELF=/opt/riscv/target/share/riscv-tests/isa/rv64ui-p-addiw
+make rv64i-xsim

@@ -35,6 +35,9 @@
 - [x] 要實做 precise exception
 - [ ] 做一個專門的 module 來偵測 illegal instruction，再餵給 control_hazard_detection_unit（例如 shamt 測試）
 
+### RV64I
+- [ ] ALU 內部 zero-extend 浪費, 因為外部還有一個 mux sign-extend (目前不影響功能)
+
 ### CSR / Exception / 中斷
 - [ ] illegal-csr：mstatus 需要檢查有一些 bit 不能直接寫入
 - [x] csr_file 要用 rst_n 初始化

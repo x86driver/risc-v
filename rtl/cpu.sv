@@ -43,6 +43,7 @@ endmodule
 
 module alu(
     input logic [3:0] alu_ctrl,
+    input logic isWordOp,
     input logic [63:0] A,
     input logic [63:0] B,
     output logic [63:0] alu_out,
@@ -52,19 +53,30 @@ module alu(
     assign zero = (alu_out == 0);
 
     always_comb begin
-        case (alu_ctrl)
-            0: alu_out = A & B;
-            1: alu_out = A | B;
-            2: alu_out = A + B;
-            3: alu_out = $signed(A) >>> B[5:0];
-            4: alu_out = A ^ B;
-            5: alu_out = A << B[5:0];
-            6: alu_out = A - B;
-            7: alu_out = A >> B[5:0];
-            8: alu_out = ($signed(A) < $signed(B)) ? 1 : 0;
-            9: alu_out = ($unsigned(A) < $unsigned(B)) ? 1 : 0;
-            default: alu_out = 0;
-        endcase
+        if (isWordOp) begin
+            case (alu_ctrl)
+                2: alu_out = {{32'h0, A[31:0] + B[31:0]}};
+                3: alu_out = {{32'h0, $signed(A[31:0]) >>> B[4:0]}};
+                5: alu_out = {{32'h0, A[31:0] << B[4:0]}};
+                6: alu_out = {{32'h0, A[31:0] - B[31:0]}};
+                7: alu_out = {{32'h0, A[31:0] >> B[4:0]}};
+                default: alu_out = 0;
+            endcase
+        end else begin
+            case (alu_ctrl)
+                0: alu_out = A & B;
+                1: alu_out = A | B;
+                2: alu_out = A + B;
+                3: alu_out = $signed(A) >>> B[5:0];
+                4: alu_out = A ^ B;
+                5: alu_out = A << B[5:0];
+                6: alu_out = A - B;
+                7: alu_out = A >> B[5:0];
+                8: alu_out = ($signed(A) < $signed(B)) ? 1 : 0;
+                9: alu_out = ($unsigned(A) < $unsigned(B)) ? 1 : 0;
+                default: alu_out = 0;
+            endcase
+        end
     end
 
 endmodule
@@ -906,6 +918,21 @@ module control_unit(
                 decoded_rs1 = inst[19:15];
                 decoded_rs2 = inst[24:20];
                 isWordOp = 0;
+            end
+            7'b0111011: begin // R-format, word
+                ALUSrc = 0;
+                ALUSrcA_sel = 2'b00;
+                MemtoReg = 0;
+                RegWrite = 1;
+                MemRead = 0;
+                MemWrite = 0;
+                Branch = 0;
+                ALUOp = 2'b10;
+                isSub = ((inst[14:12] == 3'b000) && (inst[30] == 1'b1)) ? 1 : 0; // 避免誤判 sra
+                isValid = 1;
+                decoded_rs1 = inst[19:15];
+                decoded_rs2 = inst[24:20];
+                isWordOp = 1;
             end
             7'b0010011: begin // I-format
                 ALUSrc = 1;
@@ -2873,6 +2900,7 @@ module riscv_cpu #(
 
     alu alu_0(
         .alu_ctrl(alu_ctrl),
+        .isWordOp(ex_isWordOp),
         .A(mux3to1_alu_a_operand_out),
         .B(mux_alu_out),
         .alu_out(ex_alu_out_raw),

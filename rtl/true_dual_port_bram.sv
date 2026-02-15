@@ -14,12 +14,12 @@ module true_dual_port_bram #(
     input  logic [3:0] wea,
     input  logic [13:0] addra,
     input  logic [31:0] dina,
-    output logic [31:0] douta,
+    output logic [63:0] douta,
     input  logic clkb,
-    input  logic [3:0] web,
+    input  logic [7:0] web,
     input  logic [13:0] addrb,
-    input  logic [31:0] dinb,
-    output logic [31:0] doutb
+    input  logic [63:0] dinb,
+    output logic [63:0] doutb
 );
 
 `ifdef BRAM_DEBUG
@@ -41,7 +41,7 @@ module true_dual_port_bram #(
     end
 `endif
 
-    (* ram_style = "block" *) logic [31:0] ram[0:(1<<ADDR_WIDTH)-1];
+    (* ram_style = "block" *) logic [63:0] ram[0:(1<<ADDR_WIDTH)-1];
 
     generate
         if (INIT_FILE != "") begin : gen_init
@@ -71,6 +71,10 @@ module true_dual_port_bram #(
         if (web[1]) ram[addrb][15: 8] <= dinb[15: 8];
         if (web[2]) ram[addrb][23:16] <= dinb[23:16];
         if (web[3]) ram[addrb][31:24] <= dinb[31:24];
+        if (web[4]) ram[addrb][39:32] <= dinb[39:32];
+        if (web[5]) ram[addrb][47:40] <= dinb[47:40];
+        if (web[6]) ram[addrb][55:48] <= dinb[55:48];
+        if (web[7]) ram[addrb][63:56] <= dinb[63:56];
 
         // read first
         doutb <= ram[addrb];

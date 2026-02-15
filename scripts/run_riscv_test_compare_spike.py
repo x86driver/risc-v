@@ -353,6 +353,8 @@ def reconstruct_signature_from_log(
                 nbytes = 2  # sh
             elif funct3 == 0x2:
                 nbytes = 4  # sw
+            elif funct3 == 0x3:
+                nbytes = 8  # sd
             else:
                 continue
 

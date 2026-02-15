@@ -140,8 +140,24 @@ module tb_verilator;
     initial begin
         string hexfile;
         if ($value$plusargs("HEX=%s", hexfile)) begin
+            // Hex file has one 32-bit word per line.
+            // BRAM entries are 64-bit, so we pack two words per entry (little-endian):
+            //   ram[i] = { word[2*i+1], word[2*i] }
+            //   word[2*i]   -> ram[i][31: 0]  (lower address)
+            //   word[2*i+1] -> ram[i][63:32]  (higher address)
+            automatic logic [31:0] tmp_mem [0:(1<<15)-1];
+            automatic int num_entries;
             $display("[tb_verilator] Loading program from %0s", hexfile);
-            $readmemh(hexfile, dut.unified_mem_multicycle_0.uram.ram);
+
+            // Zero-init temp array, then load hex into it
+            for (int i = 0; i < (1<<15); i++) tmp_mem[i] = 32'h0;
+            $readmemh(hexfile, tmp_mem);
+
+            // Pack pairs of 32-bit words into 64-bit BRAM entries
+            num_entries = (1 << 14);  // BRAM depth
+            for (int i = 0; i < num_entries; i++) begin
+                dut.unified_mem_multicycle_0.uram.ram[i] = {tmp_mem[2*i+1], tmp_mem[2*i]};
+            end
 
             // No boot ROM patch needed - CPU starts directly at RESET_PC (0x8000_0000).
         end else begin
@@ -255,9 +271,12 @@ module tb_verilator;
             return;
         end
         for (addr = begin_sig; addr < end_sig; addr += 4) begin
-            // Our simple RAM indexes by addr[15:2] (64KiB alias window).
-            idx = ((addr & 64'h0000_FFFF) >> 2);
-            $fwrite(fd, "%08x\n", dut.unified_mem_multicycle_0.uram.ram[idx]);
+            // BRAM entries are 64-bit; index by addr[15:3], select upper/lower 32 bits by addr[2].
+            idx = ((addr & 64'h0000_FFFF) >> 3);
+            if (addr[2])
+                $fwrite(fd, "%08x\n", dut.unified_mem_multicycle_0.uram.ram[idx][63:32]);
+            else
+                $fwrite(fd, "%08x\n", dut.unified_mem_multicycle_0.uram.ram[idx][31:0]);
         end
         $fclose(fd);
         $display("[tb_verilator] Wrote signature: %0s (0x%016x..0x%016x)", sigfile, begin_sig, end_sig);
@@ -325,9 +344,11 @@ module tb_verilator;
                 // - sw: 0x00000000 .. 0xffffffff (8-hex-digit zero-padded)
                 unique case (dut.wb_inst[14:12])
                     // IMPORTANT: pass an 8/16-bit value so %x prints the same width as Spike
-                    3'b000: $fwrite(log_fd, "mem 0x%016x 0x%x\n", dut.wb_alu_out, dut.wb_store_data[7:0]);   // sb
-                    3'b001: $fwrite(log_fd, "mem 0x%016x 0x%x\n", dut.wb_alu_out, dut.wb_store_data[15:0]);  // sh
-                    default: $fwrite(log_fd, "mem 0x%016x 0x%08x\n", dut.wb_alu_out, dut.wb_store_data[31:0]); // sw
+                    3'b000: $fwrite(log_fd, "mem 0x%016x 0x%x\n", dut.wb_alu_out, dut.wb_store_data[7:0]);     // sb
+                    3'b001: $fwrite(log_fd, "mem 0x%016x 0x%x\n", dut.wb_alu_out, dut.wb_store_data[15:0]);    // sh
+                    3'b010: $fwrite(log_fd, "mem 0x%016x 0x%08x\n", dut.wb_alu_out, dut.wb_store_data[31:0]);  // sw
+                    3'b011: $fwrite(log_fd, "mem 0x%016x 0x%016x\n", dut.wb_alu_out, dut.wb_store_data[63:0]); // sd
+                    default: $fwrite(log_fd, "mem 0x%016x 0x%016x\n", dut.wb_alu_out, dut.wb_store_data[63:0]);
                 endcase
                 printed = 1'b1;
 

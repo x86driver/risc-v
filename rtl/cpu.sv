@@ -122,20 +122,20 @@ module unified_memory_multicycle(
 
     logic [63:0] imem_last_address;  // 記錄上次讀取的地址
     logic imem_read_data_valid_reg;
-    logic [3:0] dmem_web;
-    logic [31:0] dmem_dinb;
+    logic [7:0] dmem_web;
+    logic [63:0] dmem_dinb;
 
-    wire [31:0] douta;
-    wire [31:0] doutb;
+    wire [63:0] douta;
+    wire [63:0] doutb;
     true_dual_port_bram uram(
         .clka(clk),
         .wea(4'b0000),
-        .addra(14'({imem_address[15:2]})),
+        .addra(14'({imem_address[15:3]})),
         .dina(32'h0),
         .douta(douta),
         .clkb(clk),
         .web(dmem_web),
-        .addrb(14'({dmem_address[15:2]})),
+        .addrb(13'({dmem_address[15:3]})),
         .dinb(dmem_dinb),
         .doutb(doutb)
     );
@@ -178,7 +178,7 @@ module unified_memory_multicycle(
                 end
 
                 IMEM_READ_DATA: begin
-                    imem_read_data <= douta;
+                    imem_read_data <= imem_address[2] ? douta[63:32] : douta[31:0];
                     imem_read_data_valid_reg <= 1;
                     imem_last_address <= imem_address;
                     imem_state <= IMEM_READ_VALID;  // 進入保持狀態
@@ -206,49 +206,84 @@ module unified_memory_multicycle(
             dmem_read_data <= 0;
             dmem_read_data_valid <= 0;
             dmem_write_done <= 0;
-            dmem_dinb <= 32'h0;
-            dmem_web <= 4'b0000;
+            dmem_dinb <= 64'h0;
+            dmem_web <= 8'b0000_0000;
         end else begin
             case (dmem_state)
                 IDLE: begin
                     dmem_read_data_valid <= 0;
                     dmem_write_done <= 0;
-                    dmem_dinb <= 32'h0;
-                    dmem_web <= 4'b0000;
+                    dmem_dinb <= 64'h0;
+                    dmem_web <= 8'b0000_0000;
                     if (init_calib_complete) begin
                         if (dmem_MemRead) begin
                             dmem_state <= READ_DATA;
                         end else if (dmem_MemWrite) begin
                             if (dmem_funct3 == 3'b000) begin // sb
-                                case (dmem_address[1:0])
-                                    2'b00: begin
-                                        dmem_dinb <= {24'h0, dmem_write_data[7:0]};
-                                        dmem_web <= 4'b0001;
+                                case (dmem_address[2:0])
+                                    3'b000: begin
+                                        dmem_dinb <= {56'h0, dmem_write_data[7:0]};
+                                        dmem_web <= 8'b0000_0001;
                                     end
-                                    2'b01: begin
-                                        dmem_dinb <= {16'h0, dmem_write_data[7:0], 8'h0};
-                                        dmem_web <= 4'b0010;
+                                    3'b001: begin
+                                        dmem_dinb <= {48'h0, dmem_write_data[7:0], 8'h0};
+                                        dmem_web <= 8'b0000_0010;
                                     end
-                                    2'b10: begin
-                                        dmem_dinb <= {8'h0, dmem_write_data[7:0], 16'h0};
-                                        dmem_web <= 4'b0100;
+                                    3'b010: begin
+                                        dmem_dinb <= {40'h0, dmem_write_data[7:0], 16'h0};
+                                        dmem_web <= 8'b0000_0100;
                                     end
-                                    2'b11: begin
-                                        dmem_dinb <= {dmem_write_data[7:0], 24'h0};
-                                        dmem_web <= 4'b1000;
+                                    3'b011: begin
+                                        dmem_dinb <= {32'h0, dmem_write_data[7:0], 24'h0};
+                                        dmem_web <= 8'b0000_1000;
+                                    end
+                                    3'b100: begin
+                                        dmem_dinb <= {24'h0, dmem_write_data[7:0], 32'h0};
+                                        dmem_web <= 8'b0001_0000;
+                                    end
+                                    3'b101: begin
+                                        dmem_dinb <= {16'h0, dmem_write_data[7:0], 40'h0};
+                                        dmem_web <= 8'b0010_0000;
+                                    end
+                                    3'b110: begin
+                                        dmem_dinb <= {8'h0, dmem_write_data[7:0], 48'h0};
+                                        dmem_web <= 8'b0100_0000;
+                                    end
+                                    3'b111: begin
+                                        dmem_dinb <= {dmem_write_data[7:0], 56'h0};
+                                        dmem_web <= 8'b1000_0000;
                                     end
                                 endcase
                             end else if (dmem_funct3 == 3'b001) begin // sh
-                                if (dmem_address[1] == 0) begin
-                                    dmem_dinb <= {16'h0, dmem_write_data[15:0]};
-                                    dmem_web <= 4'b0011;
-                                end else if (dmem_address[1] == 1) begin
-                                    dmem_dinb <= {dmem_write_data[15:0], 16'h0};
-                                    dmem_web <= 4'b1100;
-                                end
+                                case (dmem_address[2:1])
+                                    2'b00: begin
+                                        dmem_dinb <= {48'h0, dmem_write_data[15:0]};
+                                        dmem_web <= 8'b0000_0011;
+                                    end
+                                    2'b01: begin
+                                        dmem_dinb <= {32'h0, dmem_write_data[15:0], 16'h0};
+                                        dmem_web <= 8'b0000_1100;
+                                    end
+                                    2'b10: begin
+                                        dmem_dinb <= {16'h0, dmem_write_data[15:0], 32'h0};
+                                        dmem_web <= 8'b0011_0000;
+                                    end
+                                    2'b11: begin
+                                        dmem_dinb <= {dmem_write_data[15:0], 48'h0};
+                                        dmem_web <= 8'b1100_0000;
+                                    end
+                                endcase
                             end else if (dmem_funct3 == 3'b010) begin // sw
+                                if (dmem_address[2] == 0) begin
+                                    dmem_dinb <= {32'h0, dmem_write_data[31:0]};
+                                    dmem_web <= 8'b0000_1111;
+                                end else begin
+                                    dmem_dinb <= {dmem_write_data[31:0], 32'h0};
+                                    dmem_web <= 8'b1111_0000;
+                                end
+                            end else if (dmem_funct3 == 3'b011) begin // sd
                                 dmem_dinb <= dmem_write_data;
-                                dmem_web <= 4'b1111;
+                                dmem_web <= 8'b1111_1111;
                             end
 
                             dmem_write_done <= 1;
@@ -265,26 +300,29 @@ module unified_memory_multicycle(
                 end
 
                 READ_DATA: begin
-                    // 使用位址位移擷取對應 byte/halfword（小端序）
-                    logic [31:0] word;
                     logic [7:0]  byte_sel;
                     logic [15:0] half_sel;
-                    word = doutb;
-                    byte_sel = word[dmem_address[1:0]*8 +: 8];
-                    half_sel = dmem_address[1] ? word[31:16] : word[15:0];
+                    logic [31:0] word_sel;
+                    byte_sel = doutb[dmem_address[2:0]*8 +: 8];
+                    half_sel = doutb[dmem_address[2:1]*16 +: 16];
+                    word_sel = dmem_address[2] ? doutb[63:32] : doutb[31:0];
 
                     if (dmem_funct3 == 3'b000) begin // lb
                         dmem_read_data <= {{56{byte_sel[7]}}, byte_sel};
                     end else if (dmem_funct3 == 3'b001) begin // lh
                         dmem_read_data <= {{48{half_sel[15]}}, half_sel};
                     end else if (dmem_funct3 == 3'b010) begin // lw
-                        dmem_read_data <= {{32{word[31]}}, word};
+                        dmem_read_data <= {{32{word_sel[31]}}, word_sel};
+                    end else if (dmem_funct3 == 3'b011) begin // ld
+                        dmem_read_data <= doutb;
                     end else if (dmem_funct3 == 3'b100) begin // lbu
                         dmem_read_data <= {56'b0, byte_sel};
                     end else if (dmem_funct3 == 3'b101) begin // lhu
                         dmem_read_data <= {48'b0, half_sel};
+                    end else if (dmem_funct3 == 3'b110) begin // lwu
+                        dmem_read_data <= {32'b0, word_sel};
                     end else begin
-                        dmem_read_data <= {{32{word[31]}}, word};
+                        dmem_read_data <= doutb;
                     end
                     dmem_read_data_valid <= 1;
                     dmem_state <= READ_DONE;

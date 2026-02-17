@@ -1816,6 +1816,7 @@ module control_hazard_detection_unit(
                 3'h0: is_misaligned_read = 0;                // lb
                 3'h1: is_misaligned_read = ex_alu_out[0];    // lh
                 3'h2: is_misaligned_read = |ex_alu_out[1:0]; // lw
+                3'h3: is_misaligned_read = |ex_alu_out[2:0]; // ld
                 3'h4: is_misaligned_read = 0;                // lbu
                 3'h5: is_misaligned_read = ex_alu_out[0];    // lhu
                 default: is_misaligned_read = 0;
@@ -1830,6 +1831,7 @@ module control_hazard_detection_unit(
                 3'h0: is_misaligned_write = 0;                // sb
                 3'h1: is_misaligned_write = ex_alu_out[0];    // sh
                 3'h2: is_misaligned_write = |ex_alu_out[1:0]; // sw
+                3'h3: is_misaligned_write = |ex_alu_out[2:0]; // sd
                 default: is_misaligned_write = 0;
             endcase
             if (is_misaligned_write) begin

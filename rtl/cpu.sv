@@ -1819,6 +1819,7 @@ module control_hazard_detection_unit(
                 3'h3: is_misaligned_read = |ex_alu_out[2:0]; // ld
                 3'h4: is_misaligned_read = 0;                // lbu
                 3'h5: is_misaligned_read = ex_alu_out[0];    // lhu
+                3'h6: is_misaligned_read = |ex_alu_out[1:0]; // lwu
                 default: is_misaligned_read = 0;
             endcase
             if (is_misaligned_read) begin

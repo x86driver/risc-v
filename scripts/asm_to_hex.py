@@ -3,7 +3,7 @@
 Convert a RISC-V assembly file (main.S) into a hex file with per-line comments.
 
 Pipeline:
-- riscv64-elf-gcc -march=rv64i -mabi=lp32 -g -c to compile into an object
+- riscv64-elf-gcc -march=rv64ia -mabi=lp32 -g -c to compile into an object
 - riscv64-elf-objdump -d -M numeric to disassemble with numeric registers
 - Parse bytes (little-endian) into 32-bit words and append comments
 
@@ -196,7 +196,7 @@ def main() -> None:
             "-nostdlib",
             "-Wl,-Ttext=0",
             "-Wl,--no-relax",
-            "-march=rv64i_zicsr",
+            "-march=rv64ia_zicsr",
             "-mabi=ilp32",
             "-g",
             "-o",

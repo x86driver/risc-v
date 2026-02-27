@@ -27,7 +27,7 @@ program/hex/%_prog.hex: program/source/%.S scripts/asm_to_hex.py
 build/asm-elf/%.elf: program/source/%_elf.S
 	@mkdir -p build/asm-elf
 	/opt/riscv/bin/riscv64-unknown-elf-gcc \
-	  -march=rv64i_zicsr_zifencei -mabi=lp64 \
+	  -march=rv64ia_zicsr_zifencei -mabi=lp64 \
 	  -nostdlib -nostartfiles \
 	  -Wl,--no-relax -Wl,-e,_start -Wl,-Tprogram/riscv_test.ld \
 	  -o $@ $<
@@ -55,7 +55,7 @@ spike-selftests: verilator $(ASM_ELF_TARGETS)
 	  --dir "$(PWD)/build/asm-elf" \
 	  --pattern "*.elf" \
 	  --outdir "$(PWD)/build/spike-selftests" \
-	  --isa "rv64i" \
+	  --isa "rv64ia" \
 	  --spike-max-instructions "$${SPIKE_MAX_INSN:-200000}" \
 	  --max-cycles "$${MAX_CYCLES:-200000}" \
 	  $$( [ "$${FAIL_FAST:-0}" = "1" ] && echo --fail-fast ) \
@@ -67,7 +67,7 @@ xsim-selftests: $(ASM_ELF_TARGETS)
 	  --dir "$(PWD)/build/asm-elf" \
 	  --pattern "*.elf" \
 	  --outdir "$(PWD)/build/xsim-selftests" \
-	  --isa "rv64i" \
+	  --isa "rv64ia" \
 	  --vivado-path "$(VIVADO_PATH)" \
 	  --spike-max-instructions "$${SPIKE_MAX_INSN:-200000}" \
 	  --max-cycles "$${MAX_CYCLES:-200000}" \
@@ -128,7 +128,7 @@ riscv-tests: verilator
 	  --dir "$${DIR:-/opt/riscv/target/share/riscv-tests/isa}" \
 	  --pattern "$${PATTERN:-rv32ui-p-*}" \
 	  --outdir "$(PWD)/build/riscv-tests" \
-	  --isa "$${ISA:-rv64i}" \
+	  --isa "$${ISA:-rv64ia}" \
 	  --spike-max-instructions "$${SPIKE_MAX_INSN:-200000}" \
 	  --max-cycles "$${MAX_CYCLES:-200000}" \
 	  $$( [ "$${FAIL_FAST:-0}" = "1" ] && echo --fail-fast ) \
@@ -271,7 +271,7 @@ xsim-test:
 	  python3 scripts/run_xsim_test_compare_spike.py \
 	    --elf "$$elf_path" \
 	    --outdir "$(PWD)/build/xsim-tests" \
-	    --isa "$${ISA:-rv64i}" \
+	    --isa "$${ISA:-rv64ia}" \
 	    --vivado-path "$(VIVADO_PATH)" \
 	    --spike-max-instructions "$${SPIKE_MAX_INSN:-200000}" \
 	    --max-cycles "$${MAX_CYCLES:-200000}"; \
@@ -289,7 +289,7 @@ xsim-tests:
 	  --dir "$${DIR:-/opt/riscv/target/share/riscv-tests/isa}" \
 	  --pattern "$${PATTERN:-rv32ui-p-*}" \
 	  --outdir "$(PWD)/build/xsim-tests" \
-	  --isa "$${ISA:-rv64i}" \
+	  --isa "$${ISA:-rv64ia}" \
 	  --vivado-path "$(VIVADO_PATH)" \
 	  --spike-max-instructions "$${SPIKE_MAX_INSN:-200000}" \
 	  --max-cycles "$${MAX_CYCLES:-200000}" \

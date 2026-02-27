@@ -110,11 +110,13 @@ module unified_memory_multicycle(
         IMEM_READ_VALID     = 2'd2   // 保持 valid 直到地址變化
     } imem_state_t;
 
-    typedef enum logic [1:0] {
-        IDLE           = 2'd0,
-        WRITE_DONE     = 2'd1,
-        READ_DATA      = 2'd2,
-        READ_DONE      = 2'd3
+    typedef enum logic [2:0] {
+        IDLE           = 3'd0,
+        WRITE_DONE     = 3'd1,
+        READ_DATA      = 3'd2,
+        READ_DONE      = 3'd3,
+        AMO_RMW        = 3'd4,
+        AMO_DONE       = 3'd5
     } dmem_state_t;
 
     imem_state_t imem_state;
@@ -135,7 +137,7 @@ module unified_memory_multicycle(
         .douta(douta),
         .clkb(clk),
         .web(dmem_web),
-        .addrb(13'({dmem_address[15:3]})),
+        .addrb(14'({dmem_address[15:3]})),
         .dinb(dmem_dinb),
         .doutb(doutb)
     );
@@ -216,7 +218,9 @@ module unified_memory_multicycle(
                     dmem_dinb <= 64'h0;
                     dmem_web <= 8'b0000_0000;
                     if (init_calib_complete) begin
-                        if (dmem_MemRead) begin
+                        if (dmem_MemRead && dmem_MemWrite) begin
+                            dmem_state <= AMO_RMW;
+                        end else if (dmem_MemRead) begin
                             dmem_state <= READ_DATA;
                         end else if (dmem_MemWrite) begin
                             if (dmem_funct3 == 3'b000) begin // sb
@@ -330,6 +334,21 @@ module unified_memory_multicycle(
 
                 READ_DONE: begin
                     dmem_read_data_valid <= 0;
+                    dmem_state <= IDLE;
+                end
+
+                AMO_RMW: begin
+                    dmem_read_data <= doutb;
+                    dmem_read_data_valid <= 1;
+                    dmem_dinb <= doutb + dmem_write_data;
+                    dmem_web <= 8'b1111_1111;
+                    dmem_write_done <= 1;
+                    dmem_state <= AMO_DONE;
+                end
+
+                AMO_DONE: begin
+                    dmem_read_data_valid <= 0;
+                    dmem_write_done <= 0;
                     dmem_state <= IDLE;
                 end
 
@@ -972,6 +991,21 @@ module control_unit(
                 decoded_rs2 = inst[24:20];
                 isWordOp = 1;
             end
+            7'b0101111: begin // R-format, AMO
+                ALUSrc = 1;
+                ALUSrcA_sel = 2'b00;
+                MemtoReg = 1;
+                RegWrite = 1;
+                MemRead = 1;
+                MemWrite = 1;
+                Branch = 0;
+                ALUOp = 2'b00;
+                isSub = 0;
+                isValid = 1;
+                decoded_rs1 = inst[19:15];
+                decoded_rs2 = inst[24:20];
+                isWordOp = 0;
+            end
             7'b0010011: begin // I-format
                 ALUSrc = 1;
                 ALUSrcA_sel = 2'b00;
@@ -1169,6 +1203,8 @@ module imm32_gen(
             7'b1100111: // jalr
                 imm32 = 64'h4;
             7'b1110011: // csr
+                imm32 = 64'h0;
+            7'b0101111: // amo
                 imm32 = 64'h0;
             default:
                 imm32 = 64'h0;

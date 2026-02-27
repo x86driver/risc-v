@@ -327,37 +327,66 @@ def reconstruct_signature_from_log(
     with log_path.open("r", encoding="utf-8", errors="replace") as f:
         for line in f:
             parts = line.strip().split()
-            if len(parts) < 5:
+            if len(parts) < 2:
                 continue
-            # Store line format:
-            #   0xPC (0xINST) mem 0xADDR 0xDATA
-            if parts[2] != "mem":
-                continue
+
             inst_s = parts[1]
             if not (inst_s.startswith("(") and inst_s.endswith(")")):
                 continue
             try:
                 inst = int(inst_s[1:-1], 16)
-                addr = int(parts[3], 16)
-                data = int(parts[4], 16)
             except ValueError:
                 continue
 
             opcode = inst & 0x7F
-            if opcode != 0x23:  # STORE
-                continue
             funct3 = (inst >> 12) & 0x7
-            if funct3 == 0x0:
-                nbytes = 1  # sb
-            elif funct3 == 0x1:
-                nbytes = 2  # sh
-            elif funct3 == 0x2:
-                nbytes = 4  # sw
-            elif funct3 == 0x3:
-                nbytes = 8  # sd
+            addr: Optional[int] = None
+            data: Optional[int] = None
+            nbytes = 0
+
+            if opcode == 0x23:  # STORE: 0xPC (0xINST) mem 0xADDR 0xDATA
+                if len(parts) < 5 or parts[2] != "mem":
+                    continue
+                try:
+                    addr = int(parts[3], 16)
+                    data = int(parts[4], 16)
+                except ValueError:
+                    continue
+                if funct3 == 0x0:
+                    nbytes = 1  # sb
+                elif funct3 == 0x1:
+                    nbytes = 2  # sh
+                elif funct3 == 0x2:
+                    nbytes = 4  # sw
+                elif funct3 == 0x3:
+                    nbytes = 8  # sd
+                else:
+                    continue
+
+            elif opcode == 0x2F:  # AMO: 0xPC (0xINST) xRD 0xVAL mem 0xADDR mem 0xADDR 0xDATA
+                mem_indices = [i for i, p in enumerate(parts) if p == "mem"]
+                if len(mem_indices) < 2:
+                    continue
+                store_idx = mem_indices[-1]
+                if store_idx + 2 >= len(parts):
+                    continue
+                try:
+                    addr = int(parts[store_idx + 1], 16)
+                    data = int(parts[store_idx + 2], 16)
+                except ValueError:
+                    continue
+                if funct3 == 0x2:
+                    nbytes = 4  # .w
+                elif funct3 == 0x3:
+                    nbytes = 8  # .d
+                else:
+                    continue
+
             else:
                 continue
 
+            if addr is None:
+                continue
             base = addr - begin_sig
             if base < 0 or base >= size:
                 continue
@@ -380,7 +409,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--elf", required=True, type=Path, help="Path to riscv-tests ELF (e.g. rv32ui-p-add)")
     ap.add_argument("--outdir", default=Path("build/riscv-tests"), type=Path)
-    ap.add_argument("--isa", default="rv64i", help="Spike ISA string (default: rv64i)")
+    ap.add_argument("--isa", default="rv64ia", help="Spike ISA string (default: rv64ia)")
     ap.add_argument("--spike-max-instructions", type=int, default=200000)
     ap.add_argument("--max-cycles", type=int, default=200000)
     ap.add_argument("--build-verilator", action="store_true", help="Rebuild Verilator sim binary before running")

@@ -315,6 +315,7 @@ module tb_verilator;
         bit printed;
         int csr_dec;
         logic [6:0] opcode;
+        logic [63:0] amo_result;
 
         if (done) begin
             // do nothing
@@ -361,6 +362,19 @@ module tb_verilator;
                     dump_signature();
                     $finish;
                 end
+            end else if (opcode == 7'b0101111) begin
+                // AMO: Spike format = "xRD 0xVAL mem 0xADDR mem 0xADDR 0xDATA \n"
+                // Currently hardcoded for AMOADD only.
+                amo_result = dut.wb_mux_write_data + dut.wb_store_data;
+                if (dut.wb_RegWrite && (dut.wb_rd != 0))
+                    $fwrite(log_fd, "x%0d 0x%016x ", dut.wb_rd, dut.wb_mux_write_data);
+                $fwrite(log_fd, "mem 0x%016x ", dut.wb_alu_out);
+                unique case (dut.wb_inst[14:12])
+                    3'b010: $fwrite(log_fd, "mem 0x%016x 0x%08x \n", dut.wb_alu_out, amo_result[31:0]);
+                    3'b011: $fwrite(log_fd, "mem 0x%016x 0x%016x \n", dut.wb_alu_out, amo_result);
+                    default: $fwrite(log_fd, "mem 0x%016x 0x%016x \n", dut.wb_alu_out, amo_result);
+                endcase
+                printed = 1'b1;
             end else begin
                 bit need_trailing_space;
                 need_trailing_space = 1'b0;

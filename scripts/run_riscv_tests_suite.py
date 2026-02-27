@@ -84,7 +84,7 @@ def main() -> int:
     ap.add_argument("--dir", dest="dir_", type=Path, default=DEFAULT_DIR)
     ap.add_argument("--pattern", default="rv32ui-p-*", help="Glob pattern (default: rv32ui-p-*)")
     ap.add_argument("--outdir", type=Path, default=Path("build/riscv-tests"))
-    ap.add_argument("--isa", default="rv64i")
+    ap.add_argument("--isa", default="rv64ia")
     ap.add_argument("--spike-max-instructions", type=int, default=200000)
     ap.add_argument("--max-cycles", type=int, default=200000)
     ap.add_argument("--fail-fast", action="store_true")

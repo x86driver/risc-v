@@ -122,9 +122,17 @@ module tb_xsim;
     initial begin
         string hexfile;
         if ($value$plusargs("HEX=%s", hexfile)) begin
+            automatic logic [31:0] tmp_mem [0:(1<<15)-1];
+            automatic int num_entries;
             $display("[tb_xsim] Loading program from %0s", hexfile);
-            // Load instruction memory (true_dual_port_bram)
-            $readmemh(hexfile, dut.unified_mem_multicycle_0.uram.ram);
+
+            for (int i = 0; i < (1<<15); i++) tmp_mem[i] = 32'h0;
+            $readmemh(hexfile, tmp_mem);
+
+            num_entries = (1 << 14);
+            for (int i = 0; i < num_entries; i++) begin
+                dut.unified_mem_multicycle_0.uram.ram[i] = {tmp_mem[2*i+1], tmp_mem[2*i]};
+            end
         end else begin
             $display("[tb_xsim] WARNING: No +HEX specified, memories uninitialized");
         end
@@ -233,9 +241,11 @@ module tb_xsim;
             return;
         end
         for (addr = begin_sig; addr < end_sig; addr += 4) begin
-            // Our simple RAM indexes by addr[15:2] (64KiB alias window).
-            idx = ((addr & 64'h0000_FFFF) >> 2);
-            $fwrite(fd, "%08x\n", dut.unified_mem_multicycle_0.uram.ram[idx]);
+            idx = ((addr & 64'h0000_FFFF) >> 3);
+            if (addr[2])
+                $fwrite(fd, "%08x\n", dut.unified_mem_multicycle_0.uram.ram[idx][63:32]);
+            else
+                $fwrite(fd, "%08x\n", dut.unified_mem_multicycle_0.uram.ram[idx][31:0]);
         end
         $fclose(fd);
         $display("[tb_xsim] Wrote signature: %0s (0x%016x..0x%016x)", sigfile, begin_sig, end_sig);
@@ -274,6 +284,7 @@ module tb_xsim;
         bit printed;
         int csr_dec;
         logic [6:0] opcode;
+        logic [63:0] amo_result;
 
         if (done) begin
             // do nothing
@@ -302,10 +313,11 @@ module tb_xsim;
                 // - sh: 0x0 .. 0xffff (no zero-padding)
                 // - sw: 0x00000000 .. 0xffffffff (8-hex-digit zero-padded)
                 unique case (dut.wb_inst[14:12])
-                    // IMPORTANT: pass an 8/16-bit value so %x prints the same width as Spike
-                    3'b000: $fwrite(log_fd, "mem 0x%016x 0x%x\n", dut.wb_alu_out, dut.wb_store_data[7:0]);   // sb
-                    3'b001: $fwrite(log_fd, "mem 0x%016x 0x%x\n", dut.wb_alu_out, dut.wb_store_data[15:0]);  // sh
-                    default: $fwrite(log_fd, "mem 0x%016x 0x%08x\n", dut.wb_alu_out, dut.wb_store_data[31:0]); // sw
+                    3'b000: $fwrite(log_fd, "mem 0x%016x 0x%x\n", dut.wb_alu_out, dut.wb_store_data[7:0]);     // sb
+                    3'b001: $fwrite(log_fd, "mem 0x%016x 0x%x\n", dut.wb_alu_out, dut.wb_store_data[15:0]);    // sh
+                    3'b010: $fwrite(log_fd, "mem 0x%016x 0x%08x\n", dut.wb_alu_out, dut.wb_store_data[31:0]);  // sw
+                    3'b011: $fwrite(log_fd, "mem 0x%016x 0x%016x\n", dut.wb_alu_out, dut.wb_store_data[63:0]); // sd
+                    default: $fwrite(log_fd, "mem 0x%016x 0x%016x\n", dut.wb_alu_out, dut.wb_store_data[63:0]);
                 endcase
                 printed = 1'b1;
 
@@ -318,6 +330,19 @@ module tb_xsim;
                     dump_signature();
                     $finish;
                 end
+            end else if (opcode == 7'b0101111) begin
+                // AMO: Spike format = "xRD 0xVAL mem 0xADDR mem 0xADDR 0xDATA \n"
+                // Currently hardcoded for AMOADD only.
+                amo_result = dut.wb_mux_write_data + dut.wb_store_data;
+                if (dut.wb_RegWrite && (dut.wb_rd != 0))
+                    $fwrite(log_fd, "x%0d 0x%016x ", dut.wb_rd, dut.wb_mux_write_data);
+                $fwrite(log_fd, "mem 0x%016x ", dut.wb_alu_out);
+                unique case (dut.wb_inst[14:12])
+                    3'b010: $fwrite(log_fd, "mem 0x%016x 0x%08x \n", dut.wb_alu_out, amo_result[31:0]);
+                    3'b011: $fwrite(log_fd, "mem 0x%016x 0x%016x \n", dut.wb_alu_out, amo_result);
+                    default: $fwrite(log_fd, "mem 0x%016x 0x%016x \n", dut.wb_alu_out, amo_result);
+                endcase
+                printed = 1'b1;
             end else begin
                 bit need_trailing_space;
                 need_trailing_space = 1'b0;

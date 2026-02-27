@@ -653,6 +653,17 @@ FAIL rv32mi-p-zicntr 0.11s
     );
 ```
 
+MemtoReg: 是否從 memory 讀到的資料 寫入到 reg
+
+02/26
+==============
+
+1. 現在可讀到正確的位址了 ALUSrc 要選 1
+2. 下一步: 直接在 unified memory 把數值相加 (要想辦法把 rs2 傳進去)
+
+組語格式:
+amoadd.d rd, rs2, (rs1)
+
 ilp32: int, long, pointer 32 bits
 lp64: int 32 bits, long, pointer 64 bits
 

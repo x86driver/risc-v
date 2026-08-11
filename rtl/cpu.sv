@@ -300,6 +300,8 @@ module unified_memory_multicycle(
 
                 WRITE_DONE: begin
                     dmem_write_done <= 0;
+                    dmem_web <= 8'b0000_0000;
+                    dmem_dinb <= 64'h0;
                     dmem_state <= IDLE;
                 end
 
@@ -362,6 +364,8 @@ module unified_memory_multicycle(
                 AMO_DONE: begin
                     dmem_read_data_valid <= 0;
                     dmem_write_done <= 0;
+                    dmem_web <= 8'b0000_0000;
+                    dmem_dinb <= 64'h0;
                     dmem_state <= IDLE;
                 end
 

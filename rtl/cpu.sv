@@ -338,12 +338,25 @@ module unified_memory_multicycle(
                 end
 
                 AMO_RMW: begin
-                    dmem_read_data <= doutb;
-                    dmem_read_data_valid <= 1;
-                    dmem_dinb <= doutb + dmem_write_data;
-                    dmem_web <= 8'b1111_1111;
-                    dmem_write_done <= 1;
-                    dmem_state <= AMO_DONE;
+                    logic [31:0] word_sel;
+                    logic [31:0] sum32;
+                    word_sel = dmem_address[2] ? doutb[63:32] : doutb[31:0];
+                    sum32 = word_sel[31:0] + dmem_write_data[31:0];
+                    if (dmem_funct3 == 3'b010) begin // amoadd.w
+                        dmem_read_data <= {{32{word_sel[31]}}, word_sel};
+                        dmem_read_data_valid <= 1;
+                        dmem_dinb <= dmem_address[2] ? {sum32, 32'h0} : {32'h0, sum32};
+                        dmem_web <= dmem_address[2] ? 8'b1111_0000 : 8'b0000_1111;
+                        dmem_write_done <= 1;
+                        dmem_state <= AMO_DONE;
+                    end else begin
+                        dmem_read_data <= doutb;
+                        dmem_read_data_valid <= 1;
+                        dmem_dinb <= doutb + dmem_write_data;
+                        dmem_web <= 8'b1111_1111;
+                        dmem_write_done <= 1;
+                        dmem_state <= AMO_DONE;
+                    end
                 end
 
                 AMO_DONE: begin
